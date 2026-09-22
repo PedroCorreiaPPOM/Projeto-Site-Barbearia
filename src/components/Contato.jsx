@@ -25,11 +25,17 @@ export default function Contato() {
             <h3>WhatsApp</h3>
             <p>{numero ? numero : "Configure em src/data/barbeiros.js"}</p>
           </div>
-          <div className="contact-card">
+          <a
+            className="contact-card contact-card-link"
+            href={CONTATO.instagramUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Abrir o Instagram da GEO'ROCHA Barbearia"
+          >
             <span className="icon" aria-hidden="true">📷</span>
             <h3>Instagram</h3>
             <p>{CONTATO.instagram}</p>
-          </div>
+          </a>
         </div>
 
         <div className="contact-actions">

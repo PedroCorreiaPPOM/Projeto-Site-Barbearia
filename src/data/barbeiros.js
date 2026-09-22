@@ -58,6 +58,6 @@ export const HORARIOS_TARDE = [
 export const CONTATO = {
   endereco: "R. Rui Barbosa, 4499 — São Joaquim, Teresina - PI", // INSIRA AQUI O ENDEREÇO, se precisar corrigir
   instagram: "@georochabarbearia", // INSIRA AQUI O INSTAGRAM, se precisar corrigir
-  instagramUrl: "https://instagram.com/georochabarbearia",
+  instagramUrl: "https://www.instagram.com/georochabarbearia?stkn=MTgyb3lpODk3Ymt0aw==",
   googleMapsUrl: "https://maps.app.goo.gl/1a3R6uX6D5amg1Wp9", // ex: link gerado em maps.google.com > Compartilhar
 };

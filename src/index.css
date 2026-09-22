@@ -829,6 +829,14 @@ h1, h2, h3, h4 {
   text-align: center;
   background: var(--bg-soft);
 }
+.contact-card-link {
+  display: block;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.contact-card-link:hover {
+  border-color: var(--line);
+  transform: translateY(-2px);
+}
 .contact-card .icon {
   font-size: 1.6rem;
   margin-bottom: 14px;
