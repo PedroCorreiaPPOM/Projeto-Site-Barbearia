@@ -30,10 +30,6 @@ html {
   scroll-behavior: smooth;
 }
 
-[id] {
-  scroll-margin-top: 84px;
-}
-
 body {
   margin: 0;
   background: var(--bg);
@@ -278,20 +274,22 @@ h1, h2, h3, h4 {
 .mobile-menu {
   position: fixed;
   inset: 0;
-  z-index: 9999;
-  isolation: isolate;
-  background: #08060a;
-  background: #08060a linear-gradient(180deg, #0b0908, #08060a);
+  z-index: 99;
+  background: rgba(8, 6, 5, 0.98);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 30px;
-  animation: menu-in 0.28s ease both;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-12px);
+  transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s;
 }
-@keyframes menu-in {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
+.mobile-menu.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 .mobile-menu a {
   font-family: var(--font-display);
@@ -605,7 +603,6 @@ h1, h2, h3, h4 {
 }
 .barber-card .btn {
   margin-top: 26px;
-  text-transform: uppercase;
 }
 @media (max-width: 720px) {
   .barbers-grid {
@@ -679,7 +676,6 @@ h1, h2, h3, h4 {
 }
 .field {
   margin-bottom: 24px;
-  min-width: 0;
 }
 .field label {
   display: block;
@@ -691,9 +687,6 @@ h1, h2, h3, h4 {
 .field input,
 .field select {
   width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
   background: var(--bg);
   border: 1px solid var(--line-soft);
   color: var(--cream);
@@ -701,49 +694,22 @@ h1, h2, h3, h4 {
   border-radius: var(--radius);
   font-family: var(--font-body);
   font-size: 1rem;
-  min-height: 52px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  transition: border-color 0.2s ease;
 }
 .field input:focus,
 .field select:focus {
   border-color: var(--gold);
-  box-shadow: 0 0 0 3px rgba(201, 151, 63, 0.12);
   outline: none;
-}
-.field select:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 .field input::-webkit-calendar-picker-indicator {
   filter: invert(0.8) sepia(1) saturate(3) hue-rotate(0deg);
   cursor: pointer;
 }
 
-/* Evita que o controle nativo de data do Safari ultrapasse o formulário no iPhone. */
-@media (max-width: 640px) {
-  .field input[type="date"] {
-    display: block;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-    padding-right: 16px;
-  }
-  .field input[type="date"]::-webkit-datetime-edit,
-  .field input[type="date"]::-webkit-date-and-time-value {
-    min-width: 0;
-    padding: 0;
-  }
-  .field input[type="date"]::-webkit-calendar-picker-indicator {
-    margin: 0;
-  }
-}
-
 .barber-select {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
-  min-width: 0;
 }
 .barber-pill {
   border: 1px solid var(--line-soft);
@@ -752,15 +718,7 @@ h1, h2, h3, h4 {
   padding: 16px;
   text-align: center;
   color: var(--muted);
-  min-height: 76px;
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
   transition: all 0.2s ease;
-}
-.barber-pill:hover {
-  border-color: var(--line);
-  color: var(--cream);
 }
 .barber-pill.active {
   border-color: var(--gold);
@@ -784,34 +742,6 @@ h1, h2, h3, h4 {
   background: rgba(178, 74, 62, 0.08);
   color: #e0a89f;
 }
-.form-msg-success {
-  border-color: rgba(201, 151, 63, 0.4);
-  background: rgba(201, 151, 63, 0.08);
-  color: var(--gold-light);
-}
-.booking-note {
-  margin: 2px 0 20px;
-  padding-left: 12px;
-  border-left: 1px solid var(--gold);
-  color: var(--muted);
-  font-size: 0.86rem;
-  line-height: 1.5;
-}
-@media (max-width: 420px) {
-  .container {
-    padding: 0 18px;
-  }
-  .booking-panel {
-    padding: 24px 16px;
-  }
-  .barber-select {
-    grid-template-columns: 1fr;
-  }
-  .btn {
-    padding-left: 22px;
-    padding-right: 22px;
-  }
-}
 
 /* ============================================================
    CONTATO
@@ -828,14 +758,6 @@ h1, h2, h3, h4 {
   padding: 30px 26px;
   text-align: center;
   background: var(--bg-soft);
-}
-.contact-card-link {
-  display: block;
-  transition: border-color 0.2s ease, transform 0.2s ease;
-}
-.contact-card-link:hover {
-  border-color: var(--line);
-  transform: translateY(-2px);
 }
 .contact-card .icon {
   font-size: 1.6rem;

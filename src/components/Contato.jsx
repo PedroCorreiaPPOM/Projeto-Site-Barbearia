@@ -3,7 +3,7 @@ import { CONTATO, WHATSAPP_BARBEARIA } from "../data/barbeiros.js";
 export default function Contato() {
   const numero = (WHATSAPP_BARBEARIA || "").replace(/\D/g, "");
   const waHref = numero
-    ? `https://wa.me/${numero}?text=${encodeURIComponent("Olá! Vim pelo site da GEO'ROCHA Barbearia e quero agendar um horário.")}`
+    ? `https://wa.me/${numero}?text=${encodeURIComponent("Olá! Vim pelo site da GEO'ROCHA Barbearia.")}`
     : "#agendamento";
 
   return (
@@ -25,17 +25,11 @@ export default function Contato() {
             <h3>WhatsApp</h3>
             <p>{numero ? numero : "Configure em src/data/barbeiros.js"}</p>
           </div>
-          <a
-            className="contact-card contact-card-link"
-            href={CONTATO.instagramUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Abrir o Instagram da GEO'ROCHA Barbearia"
-          >
+          <div className="contact-card">
             <span className="icon" aria-hidden="true">📷</span>
             <h3>Instagram</h3>
             <p>{CONTATO.instagram}</p>
-          </a>
+          </div>
         </div>
 
         <div className="contact-actions">

@@ -30,7 +30,7 @@ export default function About() {
               aos detalhes para entregar um resultado que combina com você.
             </p>
             <p style={{ fontSize: "0.85rem", color: "var(--muted-dim)", marginTop: 24 }}>
-              (Agende seu horário pelo WhatsApp ou venha nos visitar!)
+              (Texto institucional editável — atualize em src/components/About.jsx)
             </p>
           </div>
           <div className="about-media">

@@ -38,7 +38,6 @@ export default function Agendamento({ barbeiroPreSelecionado }) {
   const [horario, setHorario] = useState("");
   const [barbeiroId, setBarbeiroId] = useState(barbeiroPreSelecionado || "");
   const [erro, setErro] = useState("");
-  const [enviando, setEnviando] = useState(false);
 
   const min = useMemo(() => hojeISO(), []);
 
@@ -57,7 +56,6 @@ export default function Agendamento({ barbeiroPreSelecionado }) {
   function handleSubmit(e) {
     e.preventDefault();
     setErro("");
-    setEnviando(false);
 
     if (!nome.trim() || !dataISO || !horario || !barbeiroId) {
       setErro("Por favor, preencha todos os campos.");
@@ -99,18 +97,7 @@ export default function Agendamento({ barbeiroPreSelecionado }) {
     }
 
     const url = `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
-    const whatsapp = window.open("", "_blank");
-
-    if (!whatsapp) {
-      setErro("Não foi possível abrir o WhatsApp. Verifique se o navegador bloqueou a nova aba.");
-      return;
-    }
-
-    whatsapp.opener = null;
-    setEnviando(true);
-    window.setTimeout(() => {
-      whatsapp.location.href = url;
-    }, 250);
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -133,10 +120,7 @@ export default function Agendamento({ barbeiroPreSelecionado }) {
               type="text"
               placeholder="Digite seu nome"
               value={nome}
-              onChange={(e) => {
-                setNome(e.target.value);
-                setErro("");
-              }}
+              onChange={(e) => setNome(e.target.value)}
               required
             />
           </div>
@@ -148,10 +132,7 @@ export default function Agendamento({ barbeiroPreSelecionado }) {
               type="date"
               min={min}
               value={dataISO}
-              onChange={(e) => {
-                setDataISO(e.target.value);
-                setErro("");
-              }}
+              onChange={(e) => setDataISO(e.target.value)}
               required
             />
             {fechado && (
@@ -166,10 +147,7 @@ export default function Agendamento({ barbeiroPreSelecionado }) {
             <select
               id="horario"
               value={horario}
-              onChange={(e) => {
-                setHorario(e.target.value);
-                setErro("");
-              }}
+              onChange={(e) => setHorario(e.target.value)}
               required
               disabled={!dataISO || fechado}
             >
@@ -205,10 +183,7 @@ export default function Agendamento({ barbeiroPreSelecionado }) {
                   type="button"
                   key={b.id}
                   className={`barber-pill ${barbeiroId === b.id ? "active" : ""}`}
-                  onClick={() => {
-                    setBarbeiroId(b.id);
-                    setErro("");
-                  }}
+                  onClick={() => setBarbeiroId(b.id)}
                   aria-pressed={barbeiroId === b.id}
                 >
                   <strong>{b.nome}</strong>
@@ -218,19 +193,9 @@ export default function Agendamento({ barbeiroPreSelecionado }) {
             </div>
           </div>
 
-          <p className="booking-note">
-            O horário será confirmado pelo barbeiro através do WhatsApp.
-          </p>
-
           {erro && (
             <p className="form-msg" role="alert">
               {erro}
-            </p>
-          )}
-
-          {enviando && (
-            <p className="form-msg form-msg-success" role="status" aria-live="polite">
-              Abrindo o WhatsApp para confirmar seu horário...
             </p>
           )}
 

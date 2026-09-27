@@ -14,20 +14,20 @@ export const BARBEIROS = {
     id: "geovane",
     nome: "Geovane",
     cargo: "Barbeiro",
-    whatsapp: "5586995117272", // Brasil (55) + DDD (86) + número
+    whatsapp: "COLOCAR_NUMERO_DO_GEOVANE_AQUI", // ex: "5586999998888"
     foto: null, // coloque o caminho da foto em src/assets/images/ e importe no componente Barbeiros.jsx
   },
   daniel: {
     id: "daniel",
     nome: "Daniel",
     cargo: "Barbeiro",
-    whatsapp: "5586994365702", // Brasil (55) + DDD (86) + número
+    whatsapp: "COLOCAR_NUMERO_DO_DANIEL_AQUI", // ex: "5586999997777"
     foto: null, // coloque o caminho da foto em src/assets/images/ e importe no componente Barbeiros.jsx
   },
 };
 
 // WhatsApp geral da barbearia (usado no botão flutuante e na seção de contato)
-export const WHATSAPP_BARBEARIA = "5586995117272"; // Brasil (55) + DDD (86) + número
+export const WHATSAPP_BARBEARIA = "COLOCAR_NUMERO_DO_WHATSAPP_DA_BARBEARIA_AQUI";
 
 // ============================================================
 // HORÁRIO DE FUNCIONAMENTO
@@ -58,6 +58,6 @@ export const HORARIOS_TARDE = [
 export const CONTATO = {
   endereco: "R. Rui Barbosa, 4499 — São Joaquim, Teresina - PI", // INSIRA AQUI O ENDEREÇO, se precisar corrigir
   instagram: "@georochabarbearia", // INSIRA AQUI O INSTAGRAM, se precisar corrigir
-  instagramUrl: "https://www.instagram.com/georochabarbearia?stkn=MTgyb3lpODk3Ymt0aw==",
-  googleMapsUrl: "https://maps.app.goo.gl/1a3R6uX6D5amg1Wp9", // ex: link gerado em maps.google.com > Compartilhar
+  instagramUrl: "https://instagram.com/georochabarbearia",
+  googleMapsUrl: "COLOCAR_LINK_DO_GOOGLE_MAPS_AQUI", // ex: link gerado em maps.google.com > Compartilhar
 };
