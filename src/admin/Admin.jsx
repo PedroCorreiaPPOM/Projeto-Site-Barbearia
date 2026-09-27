@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase.js";
+import Dashboard from "./Dashboard.jsx";
 
 async function check(session) {
   if (!session) return "login";
@@ -46,6 +47,8 @@ export default function Admin() {
     return data.totp.find((item) => item.status === "verified");
   }
 
+  if (mode === "ready") return <Dashboard />;
+
   return <main className="admin-shell"><div className="admin-card">
     <a href="/">← Voltar ao site</a>
     <h1>GEO'ROCHA · Administração</h1>
@@ -53,7 +56,6 @@ export default function Admin() {
     {mode === "unconfigured" && <p>Configure o Supabase para ativar o acesso administrativo.</p>}
     {mode === "error" && <p>Não foi possível verificar o acesso. Tente recarregar a página.</p>}
     {mode === "denied" && <><p>Esta conta não está autorizada.</p><button onClick={() => supabase.auth.signOut()}>Sair</button></>}
-    {mode === "ready" && <><p>Acesso administrativo autorizado. A interface de gestão será implementada na próxima etapa.</p><button onClick={() => supabase.auth.signOut()}>Sair</button></>}
     {mode === "login" && <>
       <form onSubmit={(event) => { event.preventDefault(); run(async () => {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
