@@ -19,11 +19,33 @@ export async function runAction(db, action, input = {}) {
         errorFor(error); records[table] = data;
       }
       records.photo_urls = {};
+      records.service_photo_urls = {};
+      for (const service of records.services) if (service.photo_path) {
+        const { data } = await db.storage.from("service-photos").createSignedUrl(service.photo_path, 3600);
+        if (data?.signedUrl) records.service_photo_urls[service.id] = data.signedUrl;
+      }
       for (const barber of records.barbers) if (barber.photo_path) {
         const { data } = await db.storage.from("barber-photos").createSignedUrl(barber.photo_path, 3600);
         if (data?.signedUrl) records.photo_urls[barber.id] = data.signedUrl;
       }
       return records;
+    }
+    case "service_photo_upload_url": {
+      if (!uuid(input.service_id) || !["image/jpeg", "image/png", "image/webp"].includes(input.type) || !Number.isInteger(input.size) || input.size <= 0 || input.size > 2097152) throw new Error("Use JPG, PNG ou WebP de até 2 MB.");
+      const service = await db.from("services").select("id").eq("id", input.service_id).single(); errorFor(service.error);
+      const extension = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" }[input.type];
+      const path = `${input.service_id}/${crypto.randomUUID()}.${extension}`;
+      const { data, error } = await db.storage.from("service-photos").createSignedUploadUrl(path); errorFor(error);
+      return { path, token: data.token };
+    }
+    case "save_service_photo": {
+      if (!uuid(input.service_id) || (input.path !== null && (typeof input.path !== "string" || !new RegExp(`^${input.service_id}/[0-9a-f-]{36}\\.(jpg|png|webp)$`).test(input.path)))) throw new Error("Imagem inválida.");
+      // Verify the uploaded object exists before attaching it to the service.
+      if (input.path) {
+        const { data, error } = await db.storage.from("service-photos").list(input.service_id, { search: input.path.split("/")[1] }); errorFor(error);
+        if (!data?.some((item) => item.name === input.path.split("/")[1])) throw new Error("Envie a imagem antes de salvar.");
+      }
+      result = await db.from("services").update({ photo_path: input.path }).eq("id", input.service_id).select().single(); errorFor(result.error); return result.data;
     }
     case "photo_upload_url": {
       if (!uuid(input.barber_id) || !["image/jpeg", "image/png", "image/webp"].includes(input.type)) throw new Error("Imagem inválida.");
