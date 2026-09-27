@@ -1,5 +1,13 @@
 
 /* Administrative styles are scoped; the public site keeps its existing design. */
+.dash-delete-dialog { width:min(580px,calc(100% - 32px)); max-height:calc(100svh - 32px); overflow:auto; padding:clamp(20px,4vw,32px); margin:auto; border:1px solid var(--line); border-radius:var(--radius); background:var(--bg-soft); color:var(--cream); }
+.dash-delete-dialog::backdrop { background:rgba(0,0,0,.78); backdrop-filter:blur(4px); }
+.dash-delete-summary { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:16px; background:var(--bg-elevated); border:1px solid var(--line-soft); overflow-wrap:anywhere; }
+.dash-delete-summary span { margin-left:auto; color:var(--gold-light); }
+.dash-delete-warning { padding:16px; margin:20px 0; border:1px solid var(--line); background:var(--wine-deep); }
+.dash .dash-delete-confirm { display:flex; align-items:center; justify-content:center; gap:8px; background:#a3332c; color:#fff4ef; border-color:#bf5148; }
+.dash .dash-delete-confirm:hover { background:#bd4239; }
+.dash .dash-delete-button { display:inline-flex; align-items:center; gap:8px; background:transparent; color:var(--gold-light); border-color:var(--line); }
 .admin-shell, .dash { color:var(--cream); background:var(--bg); font-family:var(--font-body); font-weight:400; }
 .admin-shell { min-height:100svh; display:grid; place-items:center; padding:24px; background:radial-gradient(ellipse at top,var(--wine-deep),var(--bg) 65%); }
 .admin-card { width:min(100%,460px); padding:36px; border:1px solid var(--line); background:var(--bg-soft); border-radius:var(--radius); }

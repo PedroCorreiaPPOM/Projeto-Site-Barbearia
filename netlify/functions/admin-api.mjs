@@ -11,6 +11,14 @@ const errorFor = (error) => { if (error) throw error; };
 export async function runAction(db, action, input = {}) {
   let result;
   switch (action) {
+    case "deletion_preview":
+    case "delete_barber":
+    case "delete_service": {
+      const kind = action === "deletion_preview" ? input.kind : action === "delete_barber" ? "barber" : "service";
+      if (!uuid(input.id) || !["barber", "service"].includes(kind)) throw new Error("Seleção inválida.");
+      result = await db.rpc(action === "deletion_preview" ? "catalog_deletion_preview" : "deactivate_catalog_item", { p_kind: kind, p_id: input.id });
+      errorFor(result.error); return result.data;
+    }
     case "bootstrap": {
       const tables = ["barbers", "services", "barber_services", "barber_hours", "barber_breaks", "schedule_blocks", "clients", "appointments", "appointment_services", "notification_settings"];
       const records = {};
@@ -61,6 +69,10 @@ export async function runAction(db, action, input = {}) {
     case "save_barber": {
       if (!text(input.name, 120)) throw new Error("Nome inválido.");
       const fields = { name: input.name.trim(), description: String(input.description || "").slice(0, 1000), active: !!input.active };
+      if (input.public_booking_key !== undefined) {
+        if (input.public_booking_key && !["geovane", "daniel"].includes(input.public_booking_key)) throw new Error("Vínculo público inválido.");
+        fields.public_booking_key = input.public_booking_key || null;
+      }
       result = input.id ? await db.from("barbers").update(fields).eq("id", input.id).select().single() : await db.from("barbers").insert(fields).select().single();
       errorFor(result.error); return result.data;
     }
@@ -117,18 +129,21 @@ export async function runAction(db, action, input = {}) {
   }
 }
 
-export async function handler(event) {
-  if (!["GET", "POST"].includes(event.httpMethod)) return json(405, { error: "Método inválido." });
-  const token = bearerToken(event.headers || {});
-  const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_ANON_KEY;
-  const access = await authorizeAdmin(token, url, key);
-  if (!access.authorized) return json(access.reason === "unauthenticated" ? 401 : 403, { error: "Acesso negado." });
-  const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: `Bearer ${token}` } } });
-  try {
-    const payload = event.httpMethod === "GET" ? { action: "bootstrap" } : JSON.parse(event.body || "{}");
-    const data = await runAction(db, payload.action, payload.input);
-    return json(200, { data });
-  } catch (error) {
-    return json(error.code === "23P01" || error.code === "23514" ? 409 : 400, { error: error.message || "Operação não concluída." });
-  }
+export function createAdminHandler({ authorize = authorizeAdmin, clientFactory = createClient } = {}) {
+  return async function handleAdmin(event) {
+    if (!["GET", "POST"].includes(event.httpMethod)) return json(405, { error: "Método inválido." });
+    const token = bearerToken(event.headers || {});
+    const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_ANON_KEY;
+    const access = await authorize(token, url, key);
+    if (!access.authorized) return json(access.reason === "unauthenticated" ? 401 : 403, { error: "Acesso negado." });
+    const db = clientFactory(url, key, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: `Bearer ${token}` } } });
+    try {
+      const payload = event.httpMethod === "GET" ? { action: "bootstrap" } : JSON.parse(event.body || "{}");
+      const data = await runAction(db, payload.action, payload.input);
+      return json(200, { data });
+    } catch (error) {
+      return json(error.code === "23P01" || error.code === "23514" ? 409 : 400, { error: error.message || "Operação não concluída." });
+    }
+  };
 }
+export const handler = createAdminHandler();

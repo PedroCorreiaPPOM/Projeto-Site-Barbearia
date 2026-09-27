@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { BARBEIROS, HORARIOS, HORARIOS_MANHA, HORARIOS_TARDE } from "../data/barbeiros.js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { HORARIOS, HORARIOS_MANHA, HORARIOS_TARDE } from "../data/barbeiros.js";
+import { fetchPublicBarbers } from "../lib/publicCatalog.js";
+import { supabase } from "../lib/supabase.js";
 
 function hojeISO() {
   const d = new Date();
@@ -32,7 +34,9 @@ function montarMensagem({ nome, dataISO, horario, barbeiro }) {
   );
 }
 
-export default function Agendamento({ barbeiroPreSelecionado }) {
+export default function Agendamento({ barbeiroPreSelecionado, catalog }) {
+  const [checking, setChecking] = useState(false);
+  const submitLock = useRef(false);
   const [nome, setNome] = useState("");
   const [dataISO, setDataISO] = useState("");
   const [horario, setHorario] = useState("");
@@ -45,6 +49,10 @@ export default function Agendamento({ barbeiroPreSelecionado }) {
     if (barbeiroPreSelecionado) setBarbeiroId(barbeiroPreSelecionado);
   }, [barbeiroPreSelecionado]);
 
+  useEffect(() => {
+    if (!catalog.barbers.some((b) => b.id === barbeiroId)) setBarbeiroId("");
+  }, [catalog.barbers, barbeiroId]);
+
   const configDia = horarioDoDia(dataISO);
   const fechado = configDia?.fechado ?? false;
 
@@ -53,8 +61,9 @@ export default function Agendamento({ barbeiroPreSelecionado }) {
     setHorario("");
   }, [dataISO]);
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
+    if (submitLock.current) return;
     setErro("");
 
     if (!nome.trim() || !dataISO || !horario || !barbeiroId) {
@@ -80,7 +89,7 @@ export default function Agendamento({ barbeiroPreSelecionado }) {
       return;
     }
 
-    const barbeiro = BARBEIROS[barbeiroId];
+    const barbeiro = catalog.barbers.find((b) => b.id === barbeiroId);
     if (!barbeiro) {
       setErro("Selecione um barbeiro.");
       return;
@@ -96,8 +105,16 @@ export default function Agendamento({ barbeiroPreSelecionado }) {
       return;
     }
 
-    const url = `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
-    window.open(url, "_blank", "noopener,noreferrer");
+    submitLock.current = true; setChecking(true);
+    try {
+      const available = await fetchPublicBarbers(supabase);
+      if (!available.some((b) => b.id === barbeiroId)) {
+        setBarbeiroId(""); setErro("Este barbeiro não está mais disponível. Selecione outro profissional."); return;
+      }
+      const url = `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
+      window.location.assign(url);
+    } catch (error) { setErro(error.message); }
+    finally { submitLock.current = false; setChecking(false); }
   }
 
   return (
@@ -178,7 +195,7 @@ export default function Agendamento({ barbeiroPreSelecionado }) {
           <div className="field">
             <label>Barbeiro</label>
             <div className="barber-select">
-              {Object.values(BARBEIROS).map((b) => (
+              {catalog.barbers.map((b) => (
                 <button
                   type="button"
                   key={b.id}
@@ -193,14 +210,18 @@ export default function Agendamento({ barbeiroPreSelecionado }) {
             </div>
           </div>
 
+          {catalog.loading && <p role="status">Consultando barbeiros disponíveis…</p>}
+          {catalog.error && <p className="form-msg" role="alert">{catalog.error}</p>}
+          {!catalog.loading && !catalog.error && !catalog.barbers.length && <p role="status">Nenhum barbeiro disponível para novos agendamentos.</p>}
+
           {erro && (
             <p className="form-msg" role="alert">
               {erro}
             </p>
           )}
 
-          <button type="submit" className="btn btn-solid btn-block">
-            Confirmar Agendamento
+          <button type="submit" className="btn btn-solid btn-block" disabled={checking || catalog.loading || !catalog.barbers.length}>
+            {checking ? "Verificando disponibilidade…" : "Confirmar Agendamento"}
           </button>
         </form>
       </div>

@@ -1,7 +1,5 @@
-import { BARBEIROS } from "../data/barbeiros.js";
-
-export default function Barbeiros({ onAgendarComBarbeiro }) {
-  const lista = Object.values(BARBEIROS);
+export default function Barbeiros({ onAgendarComBarbeiro, catalog }) {
+  const lista = catalog.barbers;
 
   return (
     <section id="barbeiros" className="section">
@@ -12,6 +10,9 @@ export default function Barbeiros({ onAgendarComBarbeiro }) {
         </div>
 
         <div className="barbers-grid">
+          {catalog.loading && <p role="status">Consultando barbeiros disponíveis…</p>}
+          {catalog.error && <p role="alert">{catalog.error}</p>}
+          {!catalog.loading && !catalog.error && !lista.length && <p>Nenhum barbeiro disponível para novos agendamentos.</p>}
           {lista.map((b) => (
             <div className="barber-card" key={b.id}>
               <div className="barber-avatar">
