@@ -6,7 +6,6 @@ const LINKS = [
   { href: "#sobre", label: "Sobre" },
   { href: "#cortes", label: "Cortes" },
   { href: "#barbeiros", label: "Barbeiros" },
-  { href: "#horarios", label: "Horários" },
   { href: "#agendamento", label: "Agendamento" },
 ];
 

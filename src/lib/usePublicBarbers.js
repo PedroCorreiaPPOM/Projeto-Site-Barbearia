@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "./supabase.js";
-import { fetchPublicBarbers } from "./publicCatalog.js";
+import { bookingApi } from "./booking.js";
 
 export default function usePublicBarbers() {
   const [state, setState] = useState({barbers:[], loading:true, error:""});
@@ -9,7 +8,7 @@ export default function usePublicBarbers() {
     async function refresh() {
       const request = ++sequence;
       try {
-        const barbers = await fetchPublicBarbers(supabase);
+        const barbers = await bookingApi("catalog");
         if (live && request === sequence) setState({barbers, loading:false, error:""});
       } catch (e) {
         if (live && request === sequence) setState({barbers:[], loading:false, error:e.message});

@@ -1,5 +1,8 @@
 
 /* Administrative styles are scoped; the public site keeps its existing design. */
+.dash-preferences { border:1px solid var(--line); padding:18px; margin:20px 0; min-width:0; }
+.dash-preferences legend { color:var(--gold-light); padding:0 8px; }
+.dash-break { padding:8px 0 16px; border-bottom:1px solid var(--line-soft); margin-bottom:12px; }
 .dash-delete-dialog { width:min(580px,calc(100% - 32px)); max-height:calc(100svh - 32px); overflow:auto; padding:clamp(20px,4vw,32px); margin:auto; border:1px solid var(--line); border-radius:var(--radius); background:var(--bg-soft); color:var(--cream); }
 .dash-delete-dialog::backdrop { background:rgba(0,0,0,.78); backdrop-filter:blur(4px); }
 .dash-delete-summary { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:16px; background:var(--bg-elevated); border:1px solid var(--line-soft); overflow-wrap:anywhere; }

@@ -11,6 +11,17 @@ const errorFor = (error) => { if (error) throw error; };
 export async function runAction(db, action, input = {}) {
   let result;
   switch (action) {
+    case "save_schedule": {
+      if (!uuid(input.barber_id) || !Number.isInteger(input.weekday) || input.weekday<0 || input.weekday>6 || !Array.isArray(input.periods) || (input.date && !isoDate(input.date))) throw new Error("Expediente inválido.");
+      result = await db.rpc("save_barber_schedule", {p_barber_id:input.barber_id,p_weekday:input.weekday,p_periods:input.periods,p_date:input.date || null});
+      errorFor(result.error); return result.data;
+    }
+    case "remove_date_override":
+    case "apply_geovane_schedule": {
+      if (!uuid(input.id)) throw new Error("Seleção inválida.");
+      result = await db.rpc(action, action === "remove_date_override" ? {p_id:input.id} : {p_barber_id:input.id});
+      errorFor(result.error); return result.data;
+    }
     case "deletion_preview":
     case "delete_barber":
     case "delete_service": {
@@ -20,11 +31,22 @@ export async function runAction(db, action, input = {}) {
       errorFor(result.error); return result.data;
     }
     case "bootstrap": {
-      const tables = ["barbers", "services", "barber_services", "barber_hours", "barber_breaks", "schedule_blocks", "clients", "appointments", "appointment_services", "notification_settings"];
+      const tables = ["barbers", "services", "barber_services", "barber_hours", "barber_breaks", "barber_date_overrides", "schedule_blocks", "clients", "appointments", "appointment_services", "notification_settings"];
       const records = {};
       for (const table of tables) {
-        const { data, error } = await db.from(table).select("*").limit(2000);
-        errorFor(error); records[table] = data;
+        // Page through rows; recent public bookings must not disappear after 2000 records.
+        records[table] = [];
+        let offset = 0;
+        while (true) {
+          let query = db.from(table).select("*");
+          if (table === "barber_services") query = query.order("barber_id").order("service_id");
+          else if (table === "appointment_services") query = query.order("appointment_id").order("service_id");
+          else query = query.order("id");
+          const { data, error } = await query.range(offset,offset+499);
+          errorFor(error); records[table].push(...data);
+          if(data.length<500) break;
+          offset+=500;
+        }
       }
       records.photo_urls = {};
       records.service_photo_urls = {};
@@ -70,8 +92,15 @@ export async function runAction(db, action, input = {}) {
       if (!text(input.name, 120)) throw new Error("Nome inválido.");
       const fields = { name: input.name.trim(), description: String(input.description || "").slice(0, 1000), active: !!input.active };
       if (input.public_booking_key !== undefined) {
-        if (input.public_booking_key && !["geovane", "daniel"].includes(input.public_booking_key)) throw new Error("Vínculo público inválido.");
+        if (input.public_booking_key && !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(input.public_booking_key)) throw new Error("Vínculo público inválido.");
         fields.public_booking_key = input.public_booking_key || null;
+      }
+      if (input.booking_enabled !== undefined) fields.booking_enabled = !!input.booking_enabled;
+      for (const [key,min,max] of [["slot_interval_minutes",5,60],["buffer_minutes",0,120],["minimum_notice_minutes",0,10080],["booking_horizon_days",1,365]]) {
+        if(input[key] === undefined) continue;
+        const value = Number(input[key]);
+        if(!Number.isInteger(value) || value<min || value>max || (key === "slot_interval_minutes" && ![5,10,15,20,30,45,60].includes(value))) throw new Error("Preferências de agenda inválidas.");
+        fields[key]=value;
       }
       result = input.id ? await db.from("barbers").update(fields).eq("id", input.id).select().single() : await db.from("barbers").insert(fields).select().single();
       errorFor(result.error); return result.data;

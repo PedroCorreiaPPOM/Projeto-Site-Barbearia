@@ -32,7 +32,7 @@ export default function ServicePhoto({ service, url, api, refresh, busy, setBusy
       if (!selected) return;
       if (!["image/jpeg","image/png","image/webp"].includes(selected.type) || selected.size <= 0 || selected.size > 2097152) { setError("Use JPG, PNG ou WebP de até 2 MB."); return; }
       setError(""); setFile(selected);
-    }}/></label><small>JPEG, PNG ou WebP · até 2 MB · acesso privado</small>
+    }}/></label><small>JPEG, PNG ou WebP · até 2 MB. Exibida no agendamento quando o serviço estiver disponível para reserva online.</small>
     <div className="dash-actions">{file && <><button disabled={busy} onClick={() => save()}>Salvar foto</button><button disabled={busy} onClick={() => setFile(null)}>Descartar prévia</button></>}{service.photo_path && <button disabled={busy} onClick={() => save(true)}>Remover foto</button>}</div>
   </div>;
 }

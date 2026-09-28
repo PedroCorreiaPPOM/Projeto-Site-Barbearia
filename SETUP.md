@@ -1,4 +1,8 @@
-# Etapa 1: infraestrutura e autenticação
+# Configuração GEO'ROCHA BARBEARIA
+
+**Versão atual:** agendamento público persistido, com múltiplos serviços e disponibilidade individual. Aplique as migrações em ordem até **006**. A seção **Etapa 5 — agendamento real e grade individual**, no fim deste documento, descreve a ativação atual e substitui as limitações do fluxo público das etapas anteriores. Nenhuma migração remota é executada automaticamente.
+
+## Etapa 1: infraestrutura e autenticação (histórico)
 
 O site público continua enviando solicitações por WhatsApp. Nenhum dado do formulário público é gravado. O banco e o acesso administrativo estão preparados para as próximas etapas; não há gestão de agendamentos nem envios automáticos ainda.
 
@@ -71,3 +75,62 @@ O site público teve apenas sua fonte de disponibilidade conectada ao banco, sem
 ### Testes
 
 `npm test` inclui testes da API e testes de PostgreSQL com PGlite (dependência apenas de desenvolvimento). Os testes aplicam as quatro migrações em banco descartável em memória, com schemas Auth/Storage simulados, e verificam exclusão lógica, bloqueios, snapshots históricos, fotos, RLS, MFA e a projeção pública mínima. Não acessam o Supabase real. A concorrência entre conexões e a operação real de Auth/Storage devem ser validadas no ambiente Supabase antes da publicação.
+
+## Etapa 5 — agendamento real e grade individual
+
+### Migrações e ativação
+
+Após 001–004, aplique **005_individual_schedules** e **006_public_booking**, nessa ordem, usando os arquivos completos de `supabase/migrations`. Nenhum horário existente é substituído. As novas colunas têm defaults: grade de 30 minutos, preparação de 0 minutos, antecedência de 60 minutos, horizonte de 60 dias e agendamento online desabilitado. O default da grade é uma preferência inicial individual, não uma grade global. Alterar esses campos não muda reservas existentes.
+
+Não há novas variáveis de ambiente: a função `booking.mjs` usa `SUPABASE_URL` e `SUPABASE_ANON_KEY` existentes. Não é necessária chave service_role. Desenvolvimento completo requer `netlify dev`; Vite isolado não executa as funções de agendamento.
+
+No painel, crie ou edite um barbeiro. Configure **Intervalo da grade de horários** (5, 10, 15, 20, 30, 45 ou 60 minutos), preparação, antecedência e horizonte. Salve o cadastro e configure o expediente na seção exibida abaixo da edição. A grade começa na abertura de cada período e controla somente os possíveis inícios. Pausas eliminam os inícios incompatíveis sem alterar a duração. A preparação ocupa tempo após o atendimento, inclusive antes de uma pausa ou fechamento, mas não entra na duração/preço apresentados ao cliente. Seu valor fica registrado na reserva; alterações posteriores não mudam reservas anteriores.
+
+### Geovane, Daniel e novos profissionais
+
+- **Geovane:** mantenha ou preencha o vínculo público `geovane` no cadastro correto. Clique em **Aplicar horários iniciais de Geovane** e confirme. O modelo aplica segunda a sábado, **09:00–12:00 e 14:00–20:00**, e domingo fechado. Ele recusa qualquer expediente/exceção já existente. Se houver horários cadastrados, revise cada dia manualmente; agendamentos futuros vinculados devem ser resolvidos antes da mudança de jornada.
+- **Daniel:** mantenha o cadastro, com online desabilitado até configurar sua jornada real. Nenhuma migração define horários para ele.
+- **Novos barbeiros:** não há lista fixa para a seleção pública. Ao habilitar **Receber agendamentos online**, um vínculo público é gerado quando estiver vazio. Cadastros ativos, habilitados, vinculados e com horários aparecem automaticamente. Associe serviços ativos para permitir avançar no fluxo. Os identificadores antigos `geovane`/`daniel` continuam válidos.
+
+O expediente aceita vários períodos e várias pausas por período. Para fechar um dia, salve sem períodos. Em **Configurar uma data específica**, o expediente daquela data substitui o semanal: salve sem períodos para folga ou adicione períodos excepcionais. A remoção da exceção restaura a jornada semanal. Férias e bloqueios continuam disponíveis separadamente. Mudanças de jornada com reservas futuras no dia afetado são recusadas; mudanças de grade são permitidas e preservam as reservas.
+
+### Reserva, privacidade e fotos
+
+O fluxo público é barbeiro → serviços → data → horário → dados e confirmação. Somente após confirmar são criados cliente (se ainda não existir), agendamento `pending` e snapshots dos serviços, em uma transação. Preços e durações são consultados novamente no banco. Duplicatas de clique/reenvio usam uma chave idempotente; falhas não deixam registros parciais. O nome/consentimento de marketing de clientes existentes não é sobrescrito por solicitações anônimas com o mesmo telefone. O consentimento solicitado vale apenas para tratar a reserva, sem marketing.
+
+A disponibilidade considera períodos, pausas, exceções por data, bloqueios, pendentes/confirmados, preparação, antecedência, horizonte e horário atual em **America/Fortaleza**. O mesmo cálculo valida a confirmação dentro do lock transacional existente, junto à constraint de sobreposição. As APIs públicas não retornam clientes, reservas de terceiros ou expediente interno: retornam catálogo publicado e horários reserváveis.
+
+Habilitar o agendamento online publica as fotos atuais do barbeiro e dos serviços ativos oferecidos. Os buckets continuam privados: a política de leitura permite apenas objetos associados ao catálogo habilitado e com expediente. O endpoint do catálogo emite URLs assinadas por **10 minutos**. Fotos desativadas saem da projeção; URLs já assinadas podem durar até expirar. Nenhum objeto é apagado.
+
+O painel busca novos registros a cada 30 segundos nas seções Visão geral, Agendamentos e Clientes, sem interromper a edição de expediente. O bootstrap consulta as páginas de dados para não omitir reservas após 2.000 registros. Cancelamentos liberam horários; remarcações passam pela validação de jornada, intervalos e conflitos.
+
+### Limites e proteção contra abuso
+
+Há limite transacional de **3 reservas por telefone por hora** e **120 reservas globais por 10 minutos**, inclusive nas chamadas diretas à RPC. Reenvio idempotente não consome nova reserva. A função Netlify configura **60 requisições por minuto por IP/domínio**, limita o corpo a 64 KB e rejeita o campo oculto antispam preenchido. Confira a aceitação da regra de rate limit no log do deploy; uma regra inválida pode não interromper a publicação ([documentação Netlify](https://docs.netlify.com/manage/security/secure-access-to-sites/rate-limiting/)). As quotas de banco permanecem independentes da regra Netlify.
+
+O telefone é declarado pelo cliente, sem verificação SMS/OTP ou CAPTCHA. Os limites reduzem abuso, mas não comprovam identidade. Consultas diretas ao Supabase não passam pelo limite de IP da Netlify; a criação continua sujeita às quotas e validações do banco. O envio de mensagens e lembretes não foi implementado. Após salvar, o link manual de WhatsApp aparece somente quando houver um telefone válido configurado para o contato legado ou o contato geral.
+
+### Como testar um agendamento completo
+
+1. Aplique as migrações em um projeto de testes e execute `netlify dev` com as variáveis existentes.
+2. Com administrador e MFA, configure um barbeiro ativo, uma jornada real, grade de 30 minutos e preparação de 0. Vincule serviços de 30 e 20 minutos e habilite online.
+3. No site, escolha o profissional e os dois serviços. Confira soma de preço e duração de **50 minutos**, escolha uma data aberta e um início disponível.
+4. Informe nome completo, telefone com DDD e consentimento de contato. Confirme. Confira o protocolo e o registro pendente no painel.
+5. Tente o mesmo início em outra sessão. Somente uma reserva deve ser aceita; horários sobrepostos devem ser recusados e atualizados. Cancele no painel e confira a liberação.
+6. Mude somente a grade para 15 minutos: os novos inícios mudam, mas a reserva criada mantém seus horários. Teste almoço, fechamento, bloqueio, exceção por data e barbeiro sem jornada.
+
+`npm test` aplica todas as seis migrações em PGlite e também inicia um PostgreSQL 17 temporário, limitado a `127.0.0.1`, para testar concorrência entre conexões independentes. O teste aguarda a segunda conexão bloquear no advisory lock antes de confirmar a primeira transação. Cobre conflitos entre reservas (inclusive somente pela preparação), bloqueios, alterações diretas no expediente e remarcações administrativas, além da idempotência simultânea. O cluster temporário é encerrado e removido ao terminar. Os binários vêm da dependência de desenvolvimento `embedded-postgres`; sua instalação exige os scripts de instalação do npm. Nenhum teste acessa o Supabase remoto.
+
+### Revisão de segurança das migrações 005 e 006
+
+As correções estão nos próprios arquivos 005/006, ainda não aplicados. Não reaplique esses arquivos se já estiverem registrados no banco: nesse caso será necessária uma migração incremental com as diferenças.
+
+- A duração do atendimento continua sendo a soma dos serviços, sem incluir preparação. A ocupação usa `[início, fim + preparação)`, tanto na disponibilidade quanto na confirmação pública e na validação administrativa. A grade determina somente os inícios.
+- A preparação é capturada no banco ao criar ou remarcar (alterar início ou barbeiro) uma reserva. Alterar a preferência do barbeiro ou apenas o status não modifica a preparação de reservas existentes. Uma remarcação preserva duração e preço registrados; tentativa de alterá-los é rejeitada. Não há ação para trocar os serviços de uma reserva existente.
+- Escritas de catálogo, reservas, serviços de reservas, vínculos, expediente, pausas, exceções e bloqueios compartilham o mesmo lock transacional. Alterações diretas no expediente também rejeitam dias com reservas pendentes/confirmadas futuras ou em andamento. Transações de escrita exigem `READ COMMITTED`, para evitar decisões baseadas em snapshots antigos. O lock é global: mantenha transações curtas.
+- O navegador gera UUIDv4 com `crypto.randomUUID()` para cada nova solicitação; repetições da mesma solicitação reutilizam o identificador. API e RPC validam a versão. A versão não comprova a entropia de identificadores enviados por clientes externos. Não existe consulta pública de comprovante somente pelo UUID: a repetição exige o mesmo conteúdo completo, comparado sem hash e com o instante normalizado. O comprovante não contém nome, telefone ou ID do cliente. `booking_requests` permite leitura apenas ao administrador com MFA; inserções são internas à RPC.
+- As permissões removem também concessões diretas de `EXECUTE` vindas de privilégios padrão. Funções internas não são executáveis por `anon`/`authenticated`; RPCs administrativas mantêm autorização e MFA. `TRUNCATE`, `REFERENCES` e criação de triggers são revogados das tabelas administrativas para as funções de acesso da aplicação. RLS permanece habilitada. As fotos continuam privadas, com leitura restrita às referências publicadas.
+
+**Conferência do destino antes de aplicar:** execute manualmente `supabase/checks/preflight_005_006.sql` no SQL Editor. Ele apenas consulta metadados. Compare colunas, constraints, triggers, funções, políticas, extensões e permissões com 001–004; confirme que 005/006 ainda não foram aplicadas no histórico de migrações. `barbers_public_booking_key_check`, as funções substituídas e o trigger `validate_appointment_schedule` precisam corresponder às versões locais. `anon`/`authenticated` não podem ter `BYPASSRLS`, superusuário, propriedade das tabelas ou herança de funções privilegiadas. Divergências precisam ser resolvidas antes de aplicar. Os testes validam o esquema reconstruído das migrações; o esquema e os dados remotos não foram consultados nesta revisão.
+
+A inspeção visual em dispositivos reais e a conferência de RLS/Storage com sessões reais do Supabase permanecem na validação da implantação.

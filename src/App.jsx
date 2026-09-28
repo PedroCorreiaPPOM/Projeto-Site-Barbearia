@@ -4,7 +4,6 @@ import Hero from "./components/Hero.jsx";
 import About from "./components/About.jsx";
 import Gallery from "./components/Gallery.jsx";
 import Barbeiros from "./components/Barbeiros.jsx";
-import Horarios from "./components/Horarios.jsx";
 import Agendamento from "./components/Agendamento.jsx";
 import Contato from "./components/Contato.jsx";
 import Footer from "./components/Footer.jsx";
@@ -30,7 +29,6 @@ export default function App() {
         <About />
         <Gallery />
         <Barbeiros onAgendarComBarbeiro={irParaAgendamento} catalog={publicCatalog} />
-        <Horarios />
         <Agendamento barbeiroPreSelecionado={barbeiroPreSelecionado} catalog={publicCatalog} />
         <Contato />
       </main>

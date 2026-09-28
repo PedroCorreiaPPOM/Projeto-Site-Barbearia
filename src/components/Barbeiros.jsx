@@ -16,16 +16,17 @@ export default function Barbeiros({ onAgendarComBarbeiro, catalog }) {
           {lista.map((b) => (
             <div className="barber-card" key={b.id}>
               <div className="barber-avatar">
-                {b.foto ? (
-                  <img src={b.foto} alt={`Foto de ${b.nome}`} />
+                {b.photo_url ? (
+                  <img src={b.photo_url} alt={`Foto de ${b.name}`} />
                 ) : (
-                  <span aria-hidden="true">{b.nome.charAt(0)}</span>
+                  <span aria-hidden="true">{b.name.charAt(0)}</span>
                 )}
               </div>
-              <h3 className="barber-name">{b.nome}</h3>
-              <p className="barber-role">{b.cargo}</p>
+              <h3 className="barber-name">{b.name}</h3>
+              <p className="barber-role">Barbeiro</p>
+              {b.description && <p>{b.description}</p>}
               <button className="btn btn-outline" onClick={() => onAgendarComBarbeiro(b.id)}>
-                Agendar com {b.nome}
+                Agendar com {b.name}
               </button>
             </div>
           ))}
