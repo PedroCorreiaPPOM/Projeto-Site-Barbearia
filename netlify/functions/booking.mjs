@@ -11,6 +11,7 @@ export async function bookingAction(db, action, input = {}) {
   if (action === "catalog") {
     result = await db.rpc("public_booking_catalog");
     if (result.error) throw result.error;
+    if (!Array.isArray(result.data)) throw new Error('Não foi possível consultar os profissionais. Tente novamente em instantes.');
     const signed = new Map();
     async function photo(bucket, path) {
       if (!path) return null;

@@ -1,7 +1,10 @@
 export async function bookingApi(action, input, signal) {
   const response = await fetch("/.netlify/functions/booking", {method:action === "catalog" ? "GET" : "POST",headers:{"Content-Type":"application/json"},body:action === "catalog" ? undefined : JSON.stringify({action,input}),cache:"no-store",signal});
   const result = await response.json().catch(()=>({error:response.status===429 ? "Muitas consultas. Aguarde um minuto e tente novamente." : "Agendamento temporariamente indisponível."}));
-  if(!response.ok) { const error=new Error(result.error || "Não foi possível consultar a agenda."); error.status=response.status; throw error; }
+  if(!response.ok) { const error=new Error(result?.error || "Não foi possível consultar a agenda."); error.status=response.status; throw error; }
+  if (!result || result.error || !Object.hasOwn(result, 'data') || (action === 'catalog' && (!Array.isArray(result.data) || result.data.some(b => !b || typeof b.id !== 'string' || !Array.isArray(b.services))))) {
+    throw new Error('Não foi possível consultar os profissionais. Tente novamente em instantes.');
+  }
   return result.data;
 }
 export const localDate = (value=new Date())=>new Intl.DateTimeFormat("en-CA",{timeZone:"America/Fortaleza",year:"numeric",month:"2-digit",day:"2-digit"}).format(value);

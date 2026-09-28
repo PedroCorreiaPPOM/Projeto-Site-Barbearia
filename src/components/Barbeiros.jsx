@@ -11,7 +11,7 @@ export default function Barbeiros({ onAgendarComBarbeiro, catalog }) {
 
         <div className="barbers-grid">
           {catalog.loading && <p role="status">Consultando barbeiros disponíveis…</p>}
-          {catalog.error && <p role="alert">{catalog.error}</p>}
+          {catalog.error && <div role="alert"><p>Não foi possível consultar os profissionais. {catalog.error}</p><button type="button" className="btn btn-outline" onClick={catalog.retry}>Tentar novamente</button></div>}
           {!catalog.loading && !catalog.error && !lista.length && <p>Nenhum barbeiro disponível para novos agendamentos.</p>}
           {lista.map((b) => (
             <div className="barber-card" key={b.id}>

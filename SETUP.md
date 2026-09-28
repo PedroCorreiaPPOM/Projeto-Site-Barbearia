@@ -134,3 +134,11 @@ As correções estão nos próprios arquivos 005/006, ainda não aplicados. Não
 **Conferência do destino antes de aplicar:** execute manualmente `supabase/checks/preflight_005_006.sql` no SQL Editor. Ele apenas consulta metadados. Compare colunas, constraints, triggers, funções, políticas, extensões e permissões com 001–004; confirme que 005/006 ainda não foram aplicadas no histórico de migrações. `barbers_public_booking_key_check`, as funções substituídas e o trigger `validate_appointment_schedule` precisam corresponder às versões locais. `anon`/`authenticated` não podem ter `BYPASSRLS`, superusuário, propriedade das tabelas ou herança de funções privilegiadas. Divergências precisam ser resolvidas antes de aplicar. Os testes validam o esquema reconstruído das migrações; o esquema e os dados remotos não foram consultados nesta revisão.
 
 A inspeção visual em dispositivos reais e a conferência de RLS/Storage com sessões reais do Supabase permanecem na validação da implantação.
+
+## Diagnóstico: barbeiro ativo não aparece no site
+
+O frontend atual usa usePublicBarbers → função Netlify booking (GET) → public_booking_catalog. A RPC public_booking_barbers permanece como projeção das mesmas chaves; o helper antigo publicCatalog.js não é usado pelo App atual.
+
+Além de ativo, online habilitado e vínculo preenchido, o catálogo exige pelo menos um período semanal ou uma exceção de hoje/futura com períodos. Abra Barbeiros → Configurar expediente e preferências, adicione períodos e clique em Salvar expediente. Sem serviços ativos vinculados, o profissional pode aparecer, mas não é possível reservar; selecione os serviços oferecidos no cartão. O diagnóstico do painel usa os dados salvos e não garante horários livres numa data específica.
+
+Se houver erro de consulta, confira a resposta de GET /.netlify/functions/booking no navegador. Uma lista vazia válida é {"data":[]}; erro HTTP, HTML ou resposta inválida não são ausência de profissionais. Confira se as migrações até 006 estão aplicadas, se o deploy inclui a função booking e se painel e função apontam para o mesmo projeto Supabase. Use a consulta de preflight para conferir permissões; não libere SELECT anônimo nas tabelas administrativas. Vite sozinho não executa funções Netlify. Nenhuma migração adicional é necessária para as correções de interface desta etapa.
