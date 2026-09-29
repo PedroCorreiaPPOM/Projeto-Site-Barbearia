@@ -7,6 +7,7 @@ import path from 'node:path';
 import net from 'node:net';
 import EmbeddedPostgres from 'embedded-postgres';
 import { bookingDatabase, ids } from './helpers/booking-db.js';
+import { draftFromSnapshot } from '../src/admin/barberDraft.js';
 
 test('PostgreSQL: independent sessions serialize booking and administrative writes', {timeout:120000}, async t => {
   const root=await realpath(tmpdir());
@@ -114,5 +115,20 @@ test('PostgreSQL: independent sessions serialize booking and administrative writ
     await reset();await b.query('begin isolation level repeatable read');
     await assert.rejects(b.query('update public.barbers set buffer_minutes=0 where id=$1',[ids.barber]),e=>e.code==='25000');
     await b.query('rollback');
+  });
+  await t.test('full editor save waits for public booking and rolls back conflicting hours',async()=>{
+    await reset();
+    const before=(await a.query('select public.barber_editor_snapshot($1) as state',[ids.barber])).rows[0].state;
+    const profile=draftFromSnapshot(before);profile.name='Must roll back';profile.week[1][0].opens_at='10:00';
+    await race(()=>book(a),()=>b.query('select public.save_barber_profile($1,$2,$3)',[ids.barber,JSON.stringify(profile),JSON.stringify(before)]));
+    assert.deepEqual((await a.query('select public.barber_editor_snapshot($1) as state',[ids.barber])).rows[0].state,before);
+  });
+  await t.test('two full editors cannot overwrite each other after waiting on the lock',async()=>{
+    await reset();
+    const before=(await a.query('select public.barber_editor_snapshot($1) as state',[ids.barber])).rows[0].state;
+    const first=draftFromSnapshot(before),second=draftFromSnapshot(before);first.description='first edit';second.description='stale edit';
+    await race(()=>a.query('select public.save_barber_profile($1,$2,$3)',[ids.barber,JSON.stringify(first),JSON.stringify(before)]),
+      ()=>b.query('select public.save_barber_profile($1,$2,$3)',[ids.barber,JSON.stringify(second),JSON.stringify(before)]),'40001');
+    assert.equal((await a.query('select description from public.barbers where id=$1',[ids.barber])).rows[0].description,'first edit');
   });
 });

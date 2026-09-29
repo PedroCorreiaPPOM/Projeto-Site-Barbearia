@@ -1,9 +1,7 @@
-import { barberPublication } from "./barberPublication.js";
-import { useEffect, useMemo, useState } from "react";
+import BarberManager from "./BarberManager.jsx";
+import { useEffect, useMemo, useRef, useState } from "react";
 import DeleteCatalogDialog, { TrashIcon } from "./DeleteCatalogDialog.jsx";
 import RelatedAppointments from "./RelatedAppointments.jsx";
-import BarberPreferences from "./BarberPreferences.jsx";
-import ScheduleEditor from "./ScheduleEditor.jsx";
 import Settings from "./Settings.jsx";
 import ServicePhoto from "./ServicePhoto.jsx";
 import { formatMinutes } from "./durations.js";
@@ -19,10 +17,11 @@ const today = () => localDay(new Date());
 const empty = { barbers: [], services: [], barber_services: [], barber_hours: [], barber_breaks: [], schedule_blocks: [], clients: [], appointments: [], appointment_services: [], notification_settings: [], photo_urls: {} };
 
 export default function Dashboard() {
+  const barberGuard=useRef(()=>true);
   const [data, setData] = useState(empty), [tab, setTab] = useState("visao"), [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [barber, setBarber] = useState(""), [status, setStatus] = useState(""), [period, setPeriod] = useState("day"), [focus, setFocus] = useState(today());
-  const [search, setSearch] = useState(""), [editingBarber, setEditingBarber] = useState(null), [editingService, setEditingService] = useState(null);
+  const [search, setSearch] = useState(""), [editingService, setEditingService] = useState(null);
   const [collapsed, setCollapsed] = useState(false), [adminName, setAdminName] = useState("Administrador");
   useEffect(() => { supabase.auth.getUser().then(({data}) => { const user = data?.user; setAdminName(user?.user_metadata?.full_name || user?.email || "Administrador"); }); }, []);
   const [deleteTarget, setDeleteTarget] = useState(null), [reviewTarget, setReviewTarget] = useState(null);
@@ -44,7 +43,7 @@ export default function Dashboard() {
   }
   async function refresh() { setLoading(true); try { setData(await api("bootstrap")); setError(""); } catch (e) { setError(e.message); } finally { setLoading(false); } }
   useEffect(() => { refresh(); }, []);
-  useEffect(()=>{ const poll = async()=>{if(!["visao","agenda","clientes"].includes(tab) || busy || editingBarber || editingService || deleteTarget) return; try {setData(await api("bootstrap"));} catch { /* Keep the current view; manual refresh reports errors. */ }}; const timer=setInterval(poll,30000); return ()=>clearInterval(timer); },[tab,busy,editingBarber,editingService,deleteTarget]);
+  useEffect(()=>{ const poll = async()=>{if(!["visao","agenda","clientes"].includes(tab) || busy || editingService || deleteTarget) return; try {setData(await api("bootstrap"));} catch { /* Keep the current view; manual refresh reports errors. */ }}; const timer=setInterval(poll,30000); return ()=>clearInterval(timer); },[tab,busy,editingService,deleteTarget]);
   async function act(action, input, success = "Alteração salva.") {
     setBusy(true); setError(""); setNotice("");
     try { const result = await api(action, input); await refresh(); setNotice(success); return result; }
@@ -74,28 +73,18 @@ export default function Dashboard() {
     const end = new Date(start.getTime() + a.total_duration_minutes * 60000);
     await act("update_appointment", { id: a.id, status: a.status, barber_id: a.barber_id, starts_at: start.toISOString(), ends_at: end.toISOString() });
   }
-  async function uploadPhoto(id, file) {
-    if (!file || !["image/jpeg","image/png","image/webp"].includes(file.type) || file.size > 2 * 1024 * 1024) { setError("Use JPG, PNG ou WebP de até 2 MB."); return; }
-    setBusy(true); setError("");
-    try {
-      const { path, token } = await api("photo_upload_url", { barber_id: id, type: file.type });
-      const { error: uploadError } = await supabase.storage.from("barber-photos").uploadToSignedUrl(path, token, file, { contentType: file.type });
-      if (uploadError) throw uploadError;
-      await api("save_photo_path", { barber_id: id, path }); await refresh(); setNotice("Foto salva.");
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
-  }
 
   return <div className={`dash ${collapsed ? "dash-collapsed" : ""}`}>
     <aside className="dash-sidebar">
-      <a className="dash-brand" href="/" aria-label="GEO'ROCHA — ver site"><img src={logo} alt=""/><span>GEO'ROCHA<small>BARBEARIA</small></span></a>
+      <a className="dash-brand" href="/" onClick={e=>{if(!barberGuard.current())e.preventDefault();}} aria-label="GEO'ROCHA — ver site"><img src={logo} alt=""/><span>GEO'ROCHA<small>BARBEARIA</small></span></a>
       <button className="dash-collapse" aria-expanded={!collapsed} aria-controls="admin-navigation" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? "Expandir navegação" : "Recolher navegação"}>{collapsed ? "☰" : "←"}<span>{collapsed ? "" : "Recolher menu"}</span></button>
-      <nav id="admin-navigation" className="dash-nav" aria-label="Seções do painel">{SECTIONS.map(([key,label,icon]) => <button key={key} title={label} aria-label={label} aria-current={tab === key ? "page" : undefined} className={tab === key ? "selected" : ""} onClick={() => { setTab(key); setError(""); setNotice(""); }}><span aria-hidden="true" className="dash-nav-icon">{icon}</span><span className="dash-nav-label">{label}</span></button>)}</nav>
+      <nav id="admin-navigation" className="dash-nav" aria-label="Seções do painel">{SECTIONS.map(([key,label,icon]) => <button key={key} title={label} aria-label={label} aria-current={tab === key ? "page" : undefined} className={tab === key ? "selected" : ""} onClick={() => { if(!barberGuard.current())return; setTab(key); setError(""); setNotice(""); }}><span aria-hidden="true" className="dash-nav-icon">{icon}</span><span className="dash-nav-label">{label}</span></button>)}</nav>
       <div className="dash-sidebar-note">Cuidado em cada detalhe.<small>Gestão da barbearia</small></div>
     </aside>
     <div className="dash-workspace">
-    <header className="dash-header"><div><span className="dash-kicker">Administração · GEO'ROCHA</span><h1>{SECTIONS.find(([key]) => key === tab)?.[1]}</h1><p>{new Date().toLocaleDateString("pt-BR", { timeZone: "America/Fortaleza", dateStyle: "full" })}</p></div><div className="dash-header-actions"><div className="dash-user"><span className="dash-user-avatar" aria-hidden="true">{adminName[0].toUpperCase()}</span><span>{adminName}<small>Administrador</small></span></div><button onClick={async () => { const {error} = await supabase.auth.signOut(); if(error) setError(error.message); }}>Sair</button></div></header>
+    <header className="dash-header"><div><span className="dash-kicker">Administração · GEO'ROCHA</span><h1>{SECTIONS.find(([key]) => key === tab)?.[1]}</h1><p>{new Date().toLocaleDateString("pt-BR", { timeZone: "America/Fortaleza", dateStyle: "full" })}</p></div><div className="dash-header-actions"><div className="dash-user"><span className="dash-user-avatar" aria-hidden="true">{adminName[0].toUpperCase()}</span><span>{adminName}<small>Administrador</small></span></div><button onClick={async () => { if(!barberGuard.current())return; const {error} = await supabase.auth.signOut(); if(error) setError(error.message); }}>Sair</button></div></header>
     <main id="admin-content" aria-busy={loading || busy}>
-    {error && <div className="dash-alert" role="alert">{error} <button onClick={refresh}>Recarregar</button></div>}
+    {error && <div className="dash-alert" role="alert">{error} <button onClick={()=>{if(barberGuard.current())refresh();}}>Recarregar</button></div>}
     {notice && <div className="dash-notice" role="status">{notice}</div>}
     {loading ? <div className="dash-loading" role="status"><span className="dash-kicker">GEO'ROCHA</span><h2>Carregando seu painel…</h2><p>Aguarde enquanto consultamos os dados.</p></div> : <>
       {tab === "visao" && <><div className="dash-heading"><h2>O movimento da barbearia</h2><span>{new Date().toLocaleDateString("pt-BR", { timeZone: "America/Fortaleza", dateStyle: "full" })}</span></div>
@@ -105,14 +94,7 @@ export default function Dashboard() {
       {tab === "agenda" && <><div className="dash-heading"><h2>Agenda</h2><button onClick={() => setTab("barbeiros")}>Horários e bloqueios</button></div>
         {!reviewTarget && <div className="dash-filters"><label>Visualização<select value={period} onChange={(e)=>setPeriod(e.target.value)}><option value="day">Dia</option><option value="week">Semana</option><option value="month">Mês</option></select></label><label>Data<input type="date" value={focus} onChange={(e)=>setFocus(e.target.value)} /></label><label>Barbeiro<select value={barber} onChange={(e)=>setBarber(e.target.value)}><option value="">Todos</option>{data.barbers.map((b)=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label><label>Status<select value={status} onChange={(e)=>setStatus(e.target.value)}><option value="">Todos</option>{Object.entries(STATUSES).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label></div>}
         {reviewTarget ? <RelatedAppointments target={reviewTarget} api={api} revision={data} onClose={()=>setReviewTarget(null)}>{(items)=><AppointmentList items={items} data={data} servicesFor={servicesFor} change={changeAppointment} reschedule={reschedule} busy={busy}/>}</RelatedAppointments> : <AppointmentList items={appointments} data={data} servicesFor={servicesFor} change={changeAppointment} reschedule={reschedule} busy={busy} />}</>}
-      {tab === "barbeiros" && <section className="dash-barbers"><div className="dash-heading"><h2>Barbeiros</h2><button onClick={()=>setEditingBarber({ name:"", description:"", active:true, booking_enabled:false, slot_interval_minutes:30, buffer_minutes:0, minimum_notice_minutes:60, booking_horizon_days:60 })}>+ Novo barbeiro</button></div>
-        {editingBarber && <><Editor title={editingBarber.id ? "Editar barbeiro" : "Novo barbeiro"} initial={editingBarber} fields={["name","description","public_booking_key"]} labels={["Nome","Descrição","Vínculo com o agendamento público"]} onCancel={()=>setEditingBarber(null)} onSave={async (v)=>{ const saved = await act("save_barber",v); if(saved) setEditingBarber(saved); }} busy={busy} />{editingBarber.id && <section className="dash-panel dash-editor"><h3>Agenda de {editingBarber.name}</h3><Hours data={data} barber={editingBarber} act={act} busy={busy}/></section>}</>}
-        <label className="dash-check"><input type="checkbox" checked={showInactive} onChange={(e)=>setShowInactive(e.target.checked)}/>Mostrar inativos (excluídos logicamente)</label>{!data.barbers.some((b)=>showInactive || b.active) && <p className="dash-empty">Nenhum barbeiro nesta lista. Consulte os inativos ou adicione um profissional.</p>}<div className="dash-grid">{data.barbers.filter((b)=>showInactive || b.active).map((b)=><article className="dash-panel" key={b.id}><div className="dash-barber-head">{data.photo_urls[b.id] ? <img src={data.photo_urls[b.id]} alt={b.name} /> : <div className="dash-avatar">{b.name[0]}</div>}<div><h3>{b.name}</h3><span>{b.active ? "Ativo" : "Inativo"}</span></div></div><p>{b.description || "Sem descrição"}</p>
-          <label>Foto (JPG, PNG, WebP; até 2 MB)<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(e)=>uploadPhoto(b.id,e.target.files[0])} /></label>
-          <div className="dash-actions"><button onClick={()=>setEditingBarber(b)}>Editar</button>{b.active ? <button className="dash-delete-button" disabled={busy} onClick={()=>setDeleteTarget({kind:"barber",item:b})}><TrashIcon/>Excluir barbeiro</button> : <button disabled={busy} onClick={()=>act("save_barber",{...b,active:true},"Barbeiro reativado.")}>Reativar</button>}</div>
-          <p>Grade: {b.slot_interval_minutes} minutos · Preparação: {b.buffer_minutes} minutos · Online: {b.booking_enabled ? "habilitado" : "desabilitado"}</p><h4>Serviços ativos oferecidos</h4>{data.services.filter((s)=>s.active).map((s)=><label className="dash-check" key={s.id}><input type="checkbox" disabled={busy} checked={data.barber_services.some((x)=>x.barber_id===b.id && x.service_id===s.id)} onChange={(e)=>act("set_barber_service",{barber_id:b.id,service_id:s.id,enabled:e.target.checked})} />{s.name}</label>)}
-          <Publication barber={b} data={data}/><button type="button" onClick={()=>setEditingBarber(b)}>Configurar expediente e preferências</button>
-          </article>)}</div></section>}
+      {tab === "barbeiros" && <BarberManager data={data} api={api} guard={barberGuard} onChanged={async()=>setData(await api("bootstrap"))} onDeactivate={item=>setDeleteTarget({kind:"barber",item})}/>}
       {tab === "servicos" && <><div className="dash-heading"><h2>Serviços</h2><button onClick={()=>setEditingService({name:"", description:"",price:"", duration_minutes:30, active:true})}>+ Novo serviço</button></div>
         {editingService && <Editor title={editingService.id ? "Editar serviço" : "Novo serviço"} initial={editingService} fields={["name","description","price","duration_minutes"]} labels={["Nome","Descrição","Preço (R$)","Duração (minutos)"]} onCancel={()=>setEditingService(null)} onSave={async(v)=>{if(await act("save_service",v))setEditingService(null);}} busy={busy} />}
         <label className="dash-check"><input type="checkbox" checked={showInactive} onChange={(e)=>setShowInactive(e.target.checked)}/>Mostrar inativos (excluídos logicamente)</label>{!data.services.some((s)=>showInactive || s.active) && <p className="dash-empty">Nenhum serviço nesta lista. Consulte os inativos ou adicione um serviço.</p>}<div className="dash-grid">{data.services.filter((s)=>showInactive || s.active).map((s)=><article className="dash-panel" key={s.id}><ServicePhoto service={s} url={data.service_photo_urls?.[s.id]} api={api} refresh={refresh} busy={busy} setBusy={setBusy} setError={setError} setNotice={setNotice}/><span className="dash-kicker">{s.active?"ATIVO":"INATIVO"}</span><h3>{s.name}</h3><p>{s.description}</p><strong>{money(s.price)} · {formatMinutes(s.duration_minutes)}</strong><p>Barbeiros: {data.barber_services.filter((x)=>x.service_id===s.id).map((x)=>byId(data.barbers,x.barber_id)?.name).filter(Boolean).join(", ")||"Nenhum"}</p><div className="dash-actions"><button onClick={()=>setEditingService(s)}>Editar</button>{s.active ? <button className="dash-delete-button" disabled={busy} onClick={()=>setDeleteTarget({kind:"service",item:s})}><TrashIcon/>Excluir serviço</button> : <button disabled={busy} onClick={()=>act("save_service",{...s,active:true},"Serviço reativado.")}>Reativar</button>}</div></article>)}</div></>}
@@ -126,8 +108,8 @@ export default function Dashboard() {
       const table = deleteTarget.kind === "barber" ? "barbers" : "services";
       const id = deleteTarget.item.id;
       setData((previous)=>({...previous,[table]:previous[table].map((item)=>item.id === id ? {...item,active:false} : item)}));
-      setDeleteTarget(null); setEditingBarber(null); setEditingService(null);
-      await refresh(); setNotice(label + " excluído dos ativos. Histórico preservado; consulte Mostrar inativos.");
+      setDeleteTarget(null); setEditingService(null);
+      await refresh(); setNotice(label + " desativado. Histórico preservado; o cadastro permanece acessível.");
     }}/>}
   </div>;
 }
@@ -138,13 +120,5 @@ function AppointmentList({items,data,servicesFor,change,reschedule,busy}) {
 function Editor({title,initial,fields,labels,onSave,onCancel,busy}) {
   const [value,setValue]=useState(initial);
   useEffect(()=>setValue(initial),[initial]);
-  return <form className="dash-panel dash-editor" onSubmit={(e)=>{e.preventDefault();onSave(value);}}><h3>{title}</h3>{fields.map((f,i)=><label key={f}>{labels[i]}{f==="public_booking_key" ? <input value={value[f]||""} placeholder="Gerado ao habilitar agendamentos e salvar" readOnly aria-readonly="true"/> : <input required={f==="name"||f==="price"||f==="duration_minutes"} type={["price","duration_minutes"].includes(f)?"number":"text"} min={f==="duration_minutes"?5:0} step={f==="price"?"0.01":undefined} value={value[f]??""} onChange={(e)=>setValue({...value,[f]:e.target.value})}/>}</label>)}{fields.includes("public_booking_key") && <><BarberPreferences value={value} setValue={setValue}/>{!initial.id && <p>Salve o cadastro para configurar o expediente individual logo abaixo.</p>}</>}<p>Para retirar este cadastro dos ativos, use o botão de exclusão na listagem.</p><div className="dash-actions"><button disabled={busy}>Salvar</button><button type="button" onClick={onCancel}>Voltar</button></div></form>;
+  return <form className="dash-panel dash-editor" onSubmit={(e)=>{e.preventDefault();onSave(value);}}><h3>{title}</h3>{fields.map((f,i)=><label key={f}>{labels[i]}{f==="public_booking_key" ? <input value={value[f]||""} placeholder="Gerado ao habilitar agendamentos e salvar" readOnly aria-readonly="true"/> : <input required={f==="name"||f==="price"||f==="duration_minutes"} type={["price","duration_minutes"].includes(f)?"number":"text"} min={f==="duration_minutes"?5:0} step={f==="price"?"0.01":undefined} value={value[f]??""} onChange={(e)=>setValue({...value,[f]:e.target.value})}/>}</label>)}<p>Para retirar este cadastro dos ativos, use o botão de exclusão na listagem.</p><div className="dash-actions"><button disabled={busy}>Salvar</button><button type="button" onClick={onCancel}>Voltar</button></div></form>;
 }
-function Hours({data,barber,act,busy}) {
-  const [kind,setKind]=useState("time_off"),[start,setStart]=useState(""),[end,setEnd]=useState(""),[reason,setReason]=useState("");
-  return <div className="dash-hours"><ScheduleEditor data={data} barber={barber} act={act} busy={busy}/>
-    <h4>Férias e bloqueios</h4><form onSubmit={(e)=>{e.preventDefault();act("save_block",{barber_id:barber.id,kind,starts_at:new Date(`${start}:00-03:00`).toISOString(),ends_at:new Date(`${end}:00-03:00`).toISOString(),reason}).then((result)=>{if(result){setStart("");setEnd("");}});}}><label>Tipo<select value={kind} onChange={(e)=>setKind(e.target.value)}><option value="time_off">Folga / férias</option><option value="block">Bloqueio</option><option value="exception">Exceção</option></select></label><label>Início<input type="datetime-local" value={start} onChange={(e)=>setStart(e.target.value)} required/></label><label>Fim<input type="datetime-local" value={end} onChange={(e)=>setEnd(e.target.value)} required/></label><label>Motivo<input value={reason} onChange={(e)=>setReason(e.target.value)}/></label><button disabled={busy}>Adicionar bloqueio</button></form><ul>{data.schedule_blocks.filter((x)=>x.barber_id===barber.id).map((x)=><li key={x.id}>{dateTime(x.starts_at)} → {dateTime(x.ends_at)} · {x.reason||x.kind} <button disabled={busy} onClick={()=>{if(window.confirm("Remover este bloqueio?"))act("delete_block",{id:x.id});}}>Remover</button></li>)}</ul>
-  </div>;
-}
-
-function Publication({barber,data}) { const state=barberPublication(barber,data); return <section className="dash-publication"><strong>{state.ready ? "Configurado para receber reservas" : state.listed ? "Visível, mas sem serviços para reservar" : "Não publicado para agendamento"}</strong>{state.reasons.length > 0 && <ul>{state.reasons.map(reason=><li key={reason}>{reason}</li>)}</ul>}<small>Diagnóstico das configurações salvas. Horários livres dependem da data, duração, pausas e reservas.</small></section>; }

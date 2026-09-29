@@ -11,6 +11,16 @@ const errorFor = (error) => { if (error) throw error; };
 export async function runAction(db, action, input = {}) {
   let result;
   switch (action) {
+    case "barber_editor_snapshot": {
+      if (!uuid(input.id)) throw new Error("Barbeiro inválido.");
+      result = await db.rpc("barber_editor_snapshot", {p_id:input.id});
+      errorFor(result.error); return result.data;
+    }
+    case "save_barber_profile": {
+      if (!uuid(input.id) || !input.profile || typeof input.profile !== 'object') throw new Error("Cadastro inválido.");
+      result = await db.rpc("save_barber_profile", {p_id:input.id,p_profile:input.profile,p_expected:input.expected || null});
+      errorFor(result.error); return result.data;
+    }
     case "save_schedule": {
       if (!uuid(input.barber_id) || !Number.isInteger(input.weekday) || input.weekday<0 || input.weekday>6 || !Array.isArray(input.periods) || (input.date && !isoDate(input.date))) throw new Error("Expediente inválido.");
       result = await db.rpc("save_barber_schedule", {p_barber_id:input.barber_id,p_weekday:input.weekday,p_periods:input.periods,p_date:input.date || null});
@@ -78,6 +88,7 @@ export async function runAction(db, action, input = {}) {
       result = await db.from("services").update({ photo_path: input.path }).eq("id", input.service_id).select().single(); errorFor(result.error); return result.data;
     }
     case "photo_upload_url": {
+      if (input.size !== undefined && (!Number.isInteger(input.size) || input.size <= 0 || input.size > 2097152)) throw new Error("Use uma imagem de até 2 MB.");
       if (!uuid(input.barber_id) || !["image/jpeg", "image/png", "image/webp"].includes(input.type)) throw new Error("Imagem inválida.");
       const extension = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" }[input.type];
       const path = `${input.barber_id}/${crypto.randomUUID()}.${extension}`;
@@ -171,7 +182,7 @@ export function createAdminHandler({ authorize = authorizeAdmin, clientFactory =
       const data = await runAction(db, payload.action, payload.input);
       return json(200, { data });
     } catch (error) {
-      return json(error.code === "23P01" || error.code === "23514" ? 409 : 400, { error: error.message || "Operação não concluída." });
+      return json(["23P01", "23514", "40001"].includes(error.code) ? 409 : 400, { error: error.message || "Operação não concluída." });
     }
   };
 }

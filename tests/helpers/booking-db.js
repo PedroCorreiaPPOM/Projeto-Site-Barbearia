@@ -15,7 +15,7 @@ export async function bookingDatabase(connection) {
     alter table storage.objects enable row level security;
     alter default privileges in schema public grant all on tables to anon,authenticated;
     alter default privileges in schema public grant execute on functions to anon,authenticated;`);
-  for(const name of ["202609270001_initial","202609270002_admin_panel","202609270003_service_photos","202609270004_catalog_soft_delete","202609270005_individual_schedules","202609270006_public_booking"])
+  for(const name of ["202609270001_initial","202609270002_admin_panel","202609270003_service_photos","202609270004_catalog_soft_delete","202609270005_individual_schedules","202609270006_public_booking","202609270007_barber_editor"])
     await db.exec(await readFile(new URL(`../../supabase/migrations/${name}.sql`,import.meta.url),"utf8"));
   await db.exec(`grant usage on schema public,auth,storage to anon,authenticated;
     grant select on storage.objects to anon,authenticated;
