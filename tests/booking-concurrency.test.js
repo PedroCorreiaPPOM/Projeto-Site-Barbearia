@@ -131,4 +131,30 @@ test('PostgreSQL: independent sessions serialize booking and administrative writ
       ()=>b.query('select public.save_barber_profile($1,$2,$3)',[ids.barber,JSON.stringify(second),JSON.stringify(before)]),'40001');
     assert.equal((await a.query('select description from public.barbers where id=$1',[ids.barber])).rows[0].description,'first edit');
   });
+  await t.test('booking commits first: permanent deletion waits and preserves the booking',async()=>{
+    await reset();
+    await race(()=>book(a),()=>b.query("select public.permanently_delete_barber($1,'Geovane')",[ids.barber]));
+    assert.equal((await owner.query('select count(*)::int as n from public.barbers where id=$1',[ids.barber])).rows[0].n,1);
+    assert.equal((await owner.query('select count(*)::int as n from public.appointments where barber_id=$1',[ids.barber])).rows[0].n,1);
+  });
+  await t.test('reactivating old history first prevents a waiting permanent deletion',async()=>{
+    await reset();
+    const appointment=randomUUID();
+    const client=(await owner.query('select id from public.clients limit 1')).rows[0].id;
+    await a.query("insert into public.appointments(id,client_id,barber_id,local_date,starts_at,ends_at,total_price,total_duration_minutes,status) values($1,$2,$3,'2020-01-06','2020-01-06T09:00:00-03:00','2020-01-06T09:30:00-03:00',45,30,'completed')",[appointment,client,ids.barber]);
+    await race(()=>a.query("update public.appointments set status='pending' where id=$1",[appointment]),()=>b.query("select public.permanently_delete_barber($1,'Geovane')",[ids.barber]));
+    assert.equal((await owner.query('select status from public.appointments where id=$1',[appointment])).rows[0].status,'pending');
+  });
+  await t.test('permanent deletion commits first: waiting booking is rejected with no orphan client',async()=>{
+    await reset();const before=(await owner.query('select count(*)::int as n from public.clients')).rows[0].n;
+    const client=(await owner.query('select id from public.clients limit 1')).rows[0].id,history=randomUUID();
+    await a.query("insert into public.appointments(id,client_id,barber_id,local_date,starts_at,ends_at,total_price,total_duration_minutes,status) values($1,$2,$3,'2020-01-06','2020-01-06T09:00:00-03:00','2020-01-06T09:30:00-03:00',45,30,'cancelled')",[history,client,ids.barber]);
+    const historicalRow=(await owner.query('select * from public.appointments where id=$1',[history])).rows[0];
+    await race(()=>a.query("select public.permanently_delete_barber($1,'Geovane')",[ids.barber]),()=>book(b));
+    assert.equal((await owner.query('select count(*)::int as n from public.barbers where id=$1',[ids.barber])).rows[0].n,0);
+    assert.equal((await owner.query('select count(*)::int as n from public.appointments where barber_id=$1',[ids.barber])).rows[0].n,1);
+    assert.deepEqual((await owner.query('select * from public.appointments where id=$1',[history])).rows[0],historicalRow);
+    await assert.rejects(b.query("update public.appointments set status='confirmed' where id=$1",[history]),e=>e.code==='23514');
+    assert.equal((await owner.query('select count(*)::int as n from public.clients')).rows[0].n,before);
+  });
 });

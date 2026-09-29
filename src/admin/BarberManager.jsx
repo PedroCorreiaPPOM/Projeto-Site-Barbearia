@@ -4,10 +4,19 @@ import { localDate, money } from '../lib/booking.js';
 import { formatMinutes } from './durations.js';
 import { barberPublication } from './barberPublication.js';
 import { DAYS, draftFromSnapshot, copyWeek, noticeMinutes, periodsSummary, normalizeDraft } from './barberDraft.js';
+import PermanentDeleteBarberDialog from './PermanentDeleteBarberDialog.jsx';
 
 export default function BarberManager({data,api,onChanged,onDeactivate,guard}) {
   const [editor,setEditor]=useState(null),[loading,setLoading]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const opening=useRef(false);
+  const [deleteTarget,setDeleteTarget]=useState(null),[removed,setRemoved]=useState([]),[cleanup,setCleanup]=useState(null);
+  const pendingPhotos=cleanup ?? data.barber_photo_cleanup?.pending;
+  async function retryPhotos() {
+    if(opening.current)return;
+    opening.current=true;setLoading(true);
+    try {const result=await api('cleanup_barber_photos');setCleanup(result.pending);setNotice(result.pending?'Ainda há fotos aguardando remoção. Tente novamente.':'Remoção de fotos concluída.');}
+    catch(e){setError(e.message);}finally{opening.current=false;setLoading(false);}
+  }
   async function edit(barber) {
     if(opening.current)return;
     opening.current=true;setLoading(true);setError('');setNotice('');
@@ -31,9 +40,10 @@ export default function BarberManager({data,api,onChanged,onDeactivate,guard}) {
     <div className="dash-heading"><div><h2>Seus profissionais</h2><p>Cadastros, serviços e agendas individuais.</p></div><button disabled={loading} onClick={()=>{setNotice('');setError('');setEditor({id:crypto.randomUUID(),snapshot:null});}}>+ Novo barbeiro</button></div>
     {error && <div className="dash-alert" role="alert">{error} <button onClick={async()=>{try{await onChanged();setError('');}catch(e){setError(e.message);}}}>Atualizar lista</button></div>}
     {notice && <p className="dash-notice" role="status">{notice}</p>}
+    {pendingPhotos && <div className="dash-alert" role="status">Há fotos de cadastros excluídos aguardando remoção no Storage. A pendência está registrada.<button disabled={loading} onClick={retryPhotos}>Tentar remover fotos novamente</button></div>}
     {loading && <p role="status">Carregando cadastro…</p>}
-    {!data.barbers.length && <p className="dash-empty">Nenhum barbeiro cadastrado. Adicione seu primeiro profissional.</p>}
-    <div className="dash-grid barber-cards">{data.barbers.map(b=>{
+    {!data.barbers.some(b=>!removed.includes(b.id)) && <p className="dash-empty">Nenhum barbeiro cadastrado. Adicione seu primeiro profissional.</p>}
+    <div className="dash-grid barber-cards">{data.barbers.filter(b=>!removed.includes(b.id)).map(b=>{
       const state=barberPublication(b,data),hours=data.barber_hours.filter(h=>h.barber_id===b.id);
       return <article className="dash-panel barber-card-admin" key={b.id} onClick={e=>{if(!e.target.closest('button'))edit(b);}}>
         <div className="dash-barber-head">{data.photo_urls[b.id] ? <img src={data.photo_urls[b.id]} alt=""/> : <span className="dash-avatar">{b.name[0]}</span>}<div><h3>{b.name}</h3><span className="dash-status">{b.active?'Ativo':'Inativo'}</span></div></div>
@@ -41,9 +51,14 @@ export default function BarberManager({data,api,onChanged,onDeactivate,guard}) {
         <p className="barber-publishing">{state.ready?'Configurado para reservas':state.listed?'Vincule serviços ativos para receber reservas':'Não publicado para agendamento'}</p>
         <dl className="barber-week-summary">{DAYS.map((day,i)=><div key={day}><dt>{day}</dt><dd>{periodsSummary(hours.filter(h=>h.weekday===i).sort((a,b)=>a.opens_at.localeCompare(b.opens_at)).map(h=>({opens_at:h.opens_at.slice(0,5),closes_at:h.closes_at.slice(0,5)})))}</dd></div>)}</dl>
         <small>{(data.barber_date_overrides || []).filter(d=>d.barber_id===b.id).length} exceção(ões) por data · {data.schedule_blocks.filter(d=>d.barber_id===b.id).length} bloqueio(s)</small>
-        <div className="dash-actions"><button disabled={loading} onClick={()=>edit(b)} aria-label={`Editar ${b.name}`}>Editar</button>{b.active ? <button disabled={loading} onClick={()=>onDeactivate(b)}>Desativar</button> : <button disabled={loading} onClick={()=>reactivate(b)}>Reativar</button>}</div>
+        <div className="dash-actions"><button disabled={loading} onClick={()=>edit(b)} aria-label={`Editar ${b.name}`}>Editar</button>{b.active ? <button disabled={loading} onClick={()=>onDeactivate(b)}>Desativar</button> : <button disabled={loading} onClick={()=>reactivate(b)}>Ativar</button>}<button disabled={loading} className="dash-delete-button" onClick={()=>setDeleteTarget(b)} aria-label={`Excluir definitivamente ${b.name}`}>Excluir</button></div>
       </article>;
     })}</div>
+    {deleteTarget && <PermanentDeleteBarberDialog barber={deleteTarget} api={api} onClose={()=>setDeleteTarget(null)} onDeactivate={()=>{onDeactivate(deleteTarget);setDeleteTarget(null);}} onDeleted={async result=>{
+      setRemoved(ids=>[...ids,result.id]);setDeleteTarget(null);setCleanup(result.photo_cleanup.pending);
+      setNotice(result.photo_cleanup.pending?'Barbeiro excluído. A remoção das fotos está pendente.':'Barbeiro excluído definitivamente.');
+      try {await onChanged();}catch{setError('A exclusão foi concluída, mas não foi possível atualizar os demais dados.');}
+    }}/>}
   </section>;
 }
 

@@ -8,9 +8,27 @@ const uuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 const text = (value, max = 200) => typeof value === "string" && value.trim().length > 0 && value.trim().length <= max;
 const errorFor = (error) => { if (error) throw error; };
 
+export async function cleanupBarberPhotos(db) {
+  try {
+    const batch = await db.rpc('pending_barber_photo_cleanup'); errorFor(batch.error);
+    if (!batch.data.paths.length) return {pending:false,remaining:0};
+    const removal = await db.storage.from('barber-photos').remove(batch.data.paths); errorFor(removal.error);
+    const done = await db.rpc('complete_barber_photo_cleanup',{p_paths:batch.data.paths}); errorFor(done.error);
+    const remaining = await db.rpc('pending_barber_photo_cleanup'); errorFor(remaining.error);
+    return {pending:remaining.data.pending>0,remaining:remaining.data.pending};
+  } catch { return {pending:true,remaining:null}; }
+}
+
 export async function runAction(db, action, input = {}) {
   let result;
   switch (action) {
+    case 'permanently_delete_barber': {
+      if (!uuid(input.id) || !text(input.confirm_name,120)) throw new Error('Confirme o nome do barbeiro.');
+      result=await db.rpc('permanently_delete_barber',{p_id:input.id,p_confirm_name:input.confirm_name});
+      errorFor(result.error);
+      return {...result.data,photo_cleanup:await cleanupBarberPhotos(db)};
+    }
+    case 'cleanup_barber_photos': return cleanupBarberPhotos(db);
     case "barber_editor_snapshot": {
       if (!uuid(input.id)) throw new Error("Barbeiro inválido.");
       result = await db.rpc("barber_editor_snapshot", {p_id:input.id});
@@ -41,7 +59,7 @@ export async function runAction(db, action, input = {}) {
       errorFor(result.error); return result.data;
     }
     case "bootstrap": {
-      const tables = ["barbers", "services", "barber_services", "barber_hours", "barber_breaks", "barber_date_overrides", "schedule_blocks", "clients", "appointments", "appointment_services", "notification_settings"];
+      const tables = ["barbers", "barber_deletions", "services", "barber_services", "barber_hours", "barber_breaks", "barber_date_overrides", "schedule_blocks", "clients", "appointments", "appointment_services", "notification_settings"];
       const records = {};
       for (const table of tables) {
         // Page through rows; recent public bookings must not disappear after 2000 records.
@@ -51,7 +69,7 @@ export async function runAction(db, action, input = {}) {
           let query = db.from(table).select("*");
           if (table === "barber_services") query = query.order("barber_id").order("service_id");
           else if (table === "appointment_services") query = query.order("appointment_id").order("service_id");
-          else query = query.order("id");
+          else query = query.order(table === 'barber_deletions' ? 'barber_id' : 'id');
           const { data, error } = await query.range(offset,offset+499);
           errorFor(error); records[table].push(...data);
           if(data.length<500) break;
@@ -68,6 +86,7 @@ export async function runAction(db, action, input = {}) {
         const { data } = await db.storage.from("barber-photos").createSignedUrl(barber.photo_path, 3600);
         if (data?.signedUrl) records.photo_urls[barber.id] = data.signedUrl;
       }
+      records.barber_photo_cleanup = await cleanupBarberPhotos(db);
       return records;
     }
     case "service_photo_upload_url": {

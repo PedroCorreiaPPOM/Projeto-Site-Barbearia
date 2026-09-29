@@ -4,7 +4,7 @@ import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import { btree_gist } from "@electric-sql/pglite/contrib/btree_gist";
 
 export const ids={barber:"10000000-0000-0000-0000-000000000001",other:"10000000-0000-0000-0000-000000000002",cut:"20000000-0000-0000-0000-000000000001",beard:"20000000-0000-0000-0000-000000000002",admin:"40000000-0000-0000-0000-000000000001"};
-export async function bookingDatabase(connection) {
+export async function bookingDatabase(connection,{applyPermanentDelete=true}={}) {
   const db=connection || new PGlite({extensions:{pgcrypto,btree_gist}});
   await db.exec(`create role anon; create role authenticated; create schema auth; create schema storage;
     create table auth.users(id uuid primary key);
@@ -15,8 +15,8 @@ export async function bookingDatabase(connection) {
     alter table storage.objects enable row level security;
     alter default privileges in schema public grant all on tables to anon,authenticated;
     alter default privileges in schema public grant execute on functions to anon,authenticated;`);
-  for(const name of ["202609270001_initial","202609270002_admin_panel","202609270003_service_photos","202609270004_catalog_soft_delete","202609270005_individual_schedules","202609270006_public_booking","202609270007_barber_editor"])
-    await db.exec(await readFile(new URL(`../../supabase/migrations/${name}.sql`,import.meta.url),"utf8"));
+  for(const name of ["202609270001_initial","202609270002_admin_panel","202609270003_service_photos","202609270004_catalog_soft_delete","202609270005_individual_schedules","202609270006_public_booking","202609270007_barber_editor","202609290008_barber_permanent_delete"])
+    if(applyPermanentDelete || name!=='202609290008_barber_permanent_delete') await db.exec(await readFile(new URL(`../../supabase/migrations/${name}.sql`,import.meta.url),"utf8"));
   await db.exec(`grant usage on schema public,auth,storage to anon,authenticated;
     grant select on storage.objects to anon,authenticated;
     grant usage on all sequences in schema public to authenticated;
