@@ -178,3 +178,64 @@ A 008 ainda não aplicada foi revisada, sem criar 009. Requer PostgreSQL 15 ou s
 O servidor captura auth.uid(), o nome disponível em auth.users.raw_user_meta_data.full_name e clock_timestamp(). O nome é um rótulo cadastral; o UUID verificável sempre aparece na interface e permanece mesmo se a conta administrativa for removida. Sem nome disponível, a mensagem usa UUID, sem inventar identificação. A agenda, os filtros e o histórico de clientes mantêm o barbeiro excluído e mostram a atribuição da exclusão e a data/hora em America/Fortaleza.
 
 A view appointment_history usa security_invoker e as políticas RLS existentes. Relatórios externos devem usar essa view ou LEFT JOIN com barber_deletions; um INNER JOIN apenas com barbers ocultaria históricos excluídos. O preflight inventaria views, referências, colunas, triggers, funções e permissões relevantes, mas não identifica consultas mantidas em ferramentas externas. Conferir esses relatórios e o esquema real antes de aplicar: nenhum banco remoto foi consultado ou alterado nesta revisão.
+
+## Etapa 9: lembretes transacionais de agendamento
+
+### Instalação
+
+Execute manualmente o inventário somente leitura supabase/checks/preflight_009.sql e compare com 001–008 já aplicadas. Depois aplique somente supabase/migrations/202609300009_appointment_reminders.sql, antes de publicar o painel atualizado. Nenhuma migração anterior foi alterada e nenhum SQL remoto foi executado nesta etapa. A 009 cria reminder_settings e appointment_reminders, adiciona reminder_revision aos agendamentos, notification_phone/notification_consent aos barbeiros e whatsapp_reminder_consent aos clientes. Ambos os tipos começam desativados; consentimentos começam falsos. Nenhum histórico é apagado.
+
+### Administração e consentimento
+
+Abra Lembretes no painel: cliente e barbeiro têm ativação e antecedência independentes, em minutos/horas/dias (15 minutos a 7 dias; minutos inteiros no banco). Os controles antigos em Configurações permanecem armazenados, mas não controlam esta fila. Não existem campanhas, ausência automática, chatbot ou marketing nesta etapa.
+
+Em Destinatários e consentimento, selecione o titular. O cliente usa o telefone cadastrado; o barbeiro usa exclusivamente notification_phone (+55 e DDD), nunca o vínculo público. Registre apenas autorizações efetivamente obtidas para lembretes no WhatsApp e mantenha a comprovação fora da aplicação. Contato da reserva e marketing_consent não são convertidos em opt-in. Trocar o telefone do cliente revoga o consentimento automaticamente; a interface exige nova confirmação ao editar o telefone de notificação do barbeiro. O consentimento pode ser revogado nessa mesma área.
+
+O histórico possui filtros por tipo, status e período do horário programado em America/Fortaleza, com páginas de 50 itens. Mostra telefone, destinatário, tentativas, datas, ID do provedor e código de erro sanitizado. Somente administradores com MFA podem consultar ou configurar. A fila não aceita escrita direta de anon/authenticated. RPCs internas não herdam EXECUTE público; apenas service_role pode adquirir/finalizar trabalho.
+
+### Backend e agendador
+
+appointment-reminders.mjs exporta schedule '* * * * *': execução a cada minuto no deploy publicado do Netlify. Processa até um item por execução (máximo nominal 60 por hora, compartilhado entre clientes e barbeiros), para respeitar o orçamento da função. Picos atrasam envios; mensagens cujo atendimento já começou são canceladas. A frequência não promete execução no segundo exato. Não é um endpoint público de envio. Em desenvolvimento use Netlify Dev e netlify functions:invoke appointment-reminders; em previews use Run now no painel Netlify. Não há agendamento automático no Vite ou Netlify Dev. Fonte: [Scheduled Functions](https://docs.netlify.com/build/functions/scheduled-functions/).
+
+A fila é criada/reconciliada dentro das transações de agendamentos e alterações de contato e configuração, e novamente antes da aquisição. A chave única (appointment_id, revision, recipient_type) impede duplicar o mesmo lembrete. Remarcar incrementa a revisão, cancela pendências anteriores e cria novas. Cancelar, concluir, faltar, revogar consentimento ou desativar cancela pendências. Lembretes enviados ou de resultado incerto não são reabertos automaticamente. Mudanças de antecedência recalculam apenas pendências. Ativar com horário programado já passado permite processamento no próximo ciclo, desde que o atendimento ainda não tenha começado.
+
+Workers, configurações e reservas compartilham o lock transacional existente. Cada aquisição tem UUID e lease de dois minutos. Durante esse intervalo, alterações no agendamento, seus serviços, cliente ou barbeiro retornam erro recuperável: aguarde e tente novamente. O timeout da chamada Meta é de oito segundos; um worker atrasado não inicia envio fora da janela. Cancelamento confirmado antes da aquisição impede envio. Uma mensagem já aceita pela Meta não pode ser recolhida.
+
+No máximo quatro tentativas, com espera de 2, 4 e 8 minutos para rejeições explícitas de limite temporário (HTTP 429, Meta 130429/131056). Erros permanentes encerram o item. Timeouts, respostas ambíguas, HTTP 5xx e leases expirados recebem OUTCOME_UNKNOWN e não são reenviados automaticamente: não existe transação distribuída com a Meta, portanto não se promete exactly-once de entrega. Essa escolha evita duplicidade após aceitação com resposta perdida, mas pode deixar uma mensagem sem envio. Investigue na conta Meta antes de qualquer intervenção manual. Não existe botão para reenviar falhas nesta etapa.
+
+### Variáveis futuras — somente ambiente das Functions no Netlify
+
+Não use prefixo VITE_ nem registre credenciais em arquivos, tabelas ou logs. Nenhuma variável real foi alterada.
+
+| Variável | Finalidade |
+|---|---|
+| SUPABASE_URL | URL do projeto existente |
+| SUPABASE_SERVICE_ROLE_KEY | Credencial exclusivamente do worker no backend; nunca do navegador |
+| WHATSAPP_REMINDERS_MODE | Ausente ou dry-run: simulação; somente live habilita o adaptador real |
+| META_WHATSAPP_TOKEN | Token oficial com permissão whatsapp_business_messaging |
+| META_WHATSAPP_PHONE_NUMBER_ID | ID real do número remetente aprovado na Meta |
+| META_GRAPH_VERSION | Versão suportada pela conta, formato vNN.N, sem versão inventada/padrão |
+| META_CLIENT_REMINDER_TEMPLATE | Nome do template aprovado para clientes |
+| META_BARBER_REMINDER_TEMPLATE | Nome do template aprovado para barbeiros |
+| META_TEMPLATE_LANGUAGE | Idioma exato aprovado, por exemplo pt_BR |
+
+Sem credencial do Supabase, o worker encerra sem acessar o banco. Em live sem configuração Meta completa, não adquire itens nem consome tentativas. O painel mostra apenas indicadores booleanos e o modo; não retorna valores secretos. A service_role existente no Supabase é privilegiada: limite seu uso ao ambiente protegido das Functions. As novas tabelas não concedem acesso direto nem a esse papel; suas operações passam pelas RPCs SECURITY DEFINER.
+
+### Templates a criar no WhatsApp Manager
+
+Crie e submeta à aprovação dois templates transacionais, com apenas BODY e parâmetros posicionais de texto, no idioma configurado. Nomes sugeridos, não existentes por pressuposição: georocha_lembrete_cliente e georocha_lembrete_barbeiro. A Meta decide a aprovação/categoria; confirme a elegibilidade de cada destinatário antes da ativação.
+
+- Cliente: Olá, {{1}}! Seu atendimento na GEO’ROCHA com {{2}} está marcado para {{3}}. Te esperamos! Parâmetros: nome real do cliente; nome real do barbeiro; data e hora em Fortaleza.
+- Barbeiro: Olá, {{1}}! Atendimento de {{2}} em {{3}}. Serviços: {{4}}. Duração prevista: {{5}} minutos. Parâmetros: barbeiro; cliente; data e hora; serviços históricos do agendamento; duração real somada.
+
+O backend envia exclusivamente type=template para graph.facebook.com e nunca substitui templates por texto livre. A data explícita evita dizer “hoje” quando a antecedência for de dias. Referência oficial: [Templates da Meta](https://whatsapp.github.io/WhatsApp-Nodejs-SDK/api-reference/messages/template/) e [coleção oficial da Meta](https://www.postman.com/meta/whatsapp-business-platform/folder/o48mro7/messages). Não há integração com WhatsApp Web.
+
+### Teste e ativação futura
+
+Mantenha WHATSAPP_REMINDERS_MODE=dry-run. Habilite um tipo no painel, registre consentimento de teste e use uma reserva futura com antecedência já vencida. Execute o worker localmente ou Run now; o histórico deve exibir Enviado · SIMULADO, sem ID de provedor e sem chamada Meta. A simulação exercita fila, aquisição e conclusão reais no banco escolhido: o item simulado não será enviado novamente ao trocar para live. Use banco de teste/reservas de teste; não simule em reservas reais que devam receber o mesmo lembrete depois.
+
+Antes de live: aplicar 009 após preflight; conferir RLS/MFA no projeto real; concluir conta oficial, número, permissões e eventual faturamento Meta; criar/aprovar templates com parâmetros correspondentes; configurar variáveis somente no backend; validar destinatários consentidos e comportamento de entrega num teste autorizado separado. Nenhuma mensagem real foi enviada nesta etapa. Status enviado significa aceito pela API, não entregue/lido: webhook de confirmação de entrega não foi implementado.
+
+Podem existir cobranças da Meta por mensagens, além de consumo de Functions no Netlify e banco no Supabase conforme os planos. Consulte [preços oficiais do WhatsApp](https://whatsappbusiness.com/products/platform-pricing/) antes de ativar; não há orçamento nem tarifa fixa embutidos no código. Em dry-run não há chamadas cobradas pela Meta, mas a infraestrutura continua sendo utilizada.
+
+Validação local desta etapa: npm test passou com 119 testes, incluindo concorrência em PostgreSQL, conversão de unidades e submissão duplicada na interface; npm run build e git diff --check passaram. A integração com conta Meta, Storage/Supabase remoto e inspeção visual em dispositivos reais não foram executadas.

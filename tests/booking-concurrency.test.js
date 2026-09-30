@@ -46,7 +46,7 @@ test('PostgreSQL: independent sessions serialize booking and administrative writ
     assert.ok(waiting,'second connection actually waits on the transaction lock');
     await a.query('commit');
     const result=await pending;
-    assert.equal(result.error?.code,code,JSON.stringify(result));
+    assert.equal(result.error?.code,code==='success'?undefined:code,JSON.stringify(result));
   }
   await t.test('two bookings whose services do not overlap but preparation does',async()=>{
     await reset();await owner.query('update public.barbers set buffer_minutes=15 where id=$1',[ids.barber]);
@@ -130,6 +130,34 @@ test('PostgreSQL: independent sessions serialize booking and administrative writ
     await race(()=>a.query('select public.save_barber_profile($1,$2,$3)',[ids.barber,JSON.stringify(first),JSON.stringify(before)]),
       ()=>b.query('select public.save_barber_profile($1,$2,$3)',[ids.barber,JSON.stringify(second),JSON.stringify(before)]),'40001');
     assert.equal((await a.query('select description from public.barbers where id=$1',[ids.barber])).rows[0].description,'first edit');
+  });
+  await owner.query(await readFile(new URL('../supabase/migrations/202609300009_appointment_reminders.sql',import.meta.url),'utf8'));
+  async function reminderFixture(){
+    await reset();
+    const tomorrow=(await owner.query("select ((now() at time zone 'America/Fortaleza')::date+1)::text as day")).rows[0].day;
+    await owner.query(`insert into public.barber_date_overrides(barber_id,local_date,periods) values($1,$2,'[{"opens_at":"09:00","closes_at":"18:00","breaks":[]}]') on conflict(barber_id,local_date) do nothing`,[ids.barber,tomorrow]);
+    const result=await owner.query("select public.create_public_booking($1,$2,$3,$4,'Cliente Completo','+5585999999999',true) as receipt",[randomUUID(),ids.barber,[ids.cut],`${tomorrow}T09:00:00-03:00`]);
+    await owner.query('update public.clients set whatsapp_reminder_consent=true');
+    await a.query('select public.save_reminder_settings(true,false,10080,60)');
+    await a.query('set role service_role');await b.query('set role service_role');
+    return result.rows[0].receipt.id;
+  }
+  await t.test('two reminder workers serialize and only one owns the due item',async()=>{
+    await reminderFixture();let first,second;
+    await race(async()=>{first=(await a.query('select public.claim_appointment_reminder(true) as q')).rows[0].q;},async()=>{second=(await b.query('select public.claim_appointment_reminder(true) as q')).rows[0].q;},'success');
+    assert.ok(first.claim_token);assert.equal(second,null);
+    assert.equal((await owner.query("select count(*)::int as n from public.appointment_reminders where status='processing'")).rows[0].n,1);
+  });
+  await t.test('cancellation commits before waiting worker: no reminder can be claimed',async()=>{
+    const id=await reminderFixture();await admin(a);let claimed;
+    await race(()=>a.query("update public.appointments set status='cancelled' where id=$1",[id]),async()=>{claimed=(await b.query('select public.claim_appointment_reminder(true) as q')).rows[0].q;},'success');
+    assert.equal(claimed,null);
+  });
+  await t.test('worker commits first: concurrent cancellation must wait for dispatch completion',async()=>{
+    const id=await reminderFixture();await admin(b);let q;
+    await race(async()=>{q=(await a.query('select public.claim_appointment_reminder(true) as q')).rows[0].q;},()=>b.query("update public.appointments set status='cancelled' where id=$1",[id]),'40001');
+    await a.query("select public.finish_appointment_reminder($1,$2,'accepted',null)",[q.id,q.claim_token]);
+    await b.query("update public.appointments set status='cancelled' where id=$1",[id]);
   });
   await t.test('booking commits first: permanent deletion waits and preserves the booking',async()=>{
     await reset();

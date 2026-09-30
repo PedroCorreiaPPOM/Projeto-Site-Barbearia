@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { bearerToken, authorizeAdmin } from "./admin-status.mjs";
+import {reminderMode,metaReady} from '../lib/reminder-worker.mjs';
 
 const json = (code, body) => ({ statusCode: code, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }, body: JSON.stringify(body) });
 const allowedStatuses = ["pending", "confirmed", "completed", "cancelled", "no_show"];
@@ -22,6 +23,26 @@ export async function cleanupBarberPhotos(db) {
 export async function runAction(db, action, input = {}) {
   let result;
   switch (action) {
+    case 'reminder_overview': {
+      const settings=await db.from('reminder_settings').select('*').single();errorFor(settings.error);
+      let query=db.from('appointment_reminders').select('id,appointment_id,recipient_type,recipient_name,recipient_phone,scheduled_at,status,attempts,last_attempt_at,next_attempt_at,provider_id,error_code,simulated,sent_at,created_at,updated_at').order('scheduled_at',{ascending:false});
+      if(input.status){if(!['pending','processing','sent','failed','cancelled','retry'].includes(input.status))throw new Error('Status inválido');query=query.eq('status',input.status);}
+      if(input.kind){if(!['client','barber'].includes(input.kind))throw new Error('Tipo inválido');query=query.eq('recipient_type',input.kind);}
+      if(input.from){if(!isoDate(input.from))throw new Error('Data inválida');query=query.gte('scheduled_at',`${input.from}T00:00:00-03:00`);}
+      if(input.to){if(!isoDate(input.to))throw new Error('Data inválida');query=query.lte('scheduled_at',`${input.to}T23:59:59.999-03:00`);}
+      const offset=Number(input.offset||0);if(!Number.isInteger(offset)||offset<0)throw new Error('Página inválida');
+      const history=await query.range(offset,offset+49);errorFor(history.error);
+      return {settings:settings.data,history:history.data,mode:reminderMode(process.env),configured:metaReady(process.env),worker_configured:!!process.env.SUPABASE_SERVICE_ROLE_KEY};
+    }
+    case 'save_reminder_settings': {
+      if(typeof input.client_enabled!=='boolean'||typeof input.barber_enabled!=='boolean'||![input.client_minutes,input.barber_minutes].every(n=>Number.isInteger(n)&&n>=15&&n<=10080))throw new Error('Use de 15 minutos a 7 dias.');
+      result=await db.rpc('save_reminder_settings',{p_client_enabled:input.client_enabled,p_barber_enabled:input.barber_enabled,p_client_minutes:input.client_minutes,p_barber_minutes:input.barber_minutes});errorFor(result.error);return true;
+    }
+    case 'save_reminder_contact': {
+      if(!uuid(input.id)||!['client','barber'].includes(input.kind)||typeof input.consent!=='boolean')throw new Error('Contato inválido');
+      if(input.kind==='barber' && input.phone!==null && !/^\+55[1-9][0-9]{9,10}$/.test(input.phone||''))throw new Error('Informe telefone com +55 e DDD.');
+      result=await db.from(input.kind==='barber'?'barbers':'clients').update(input.kind==='barber'?{notification_phone:input.phone,notification_consent:input.consent}:{whatsapp_reminder_consent:input.consent}).eq('id',input.id).select('id').single();errorFor(result.error);return true;
+    }
     case 'permanently_delete_barber': {
       if (!uuid(input.id) || !text(input.confirm_name,120)) throw new Error('Confirme o nome do barbeiro.');
       result=await db.rpc('permanently_delete_barber',{p_id:input.id,p_confirm_name:input.confirm_name});

@@ -6,7 +6,7 @@ import { btree_gist } from "@electric-sql/pglite/contrib/btree_gist";
 export const ids={barber:"10000000-0000-0000-0000-000000000001",other:"10000000-0000-0000-0000-000000000002",cut:"20000000-0000-0000-0000-000000000001",beard:"20000000-0000-0000-0000-000000000002",admin:"40000000-0000-0000-0000-000000000001"};
 export async function bookingDatabase(connection,{applyPermanentDelete=true}={}) {
   const db=connection || new PGlite({extensions:{pgcrypto,btree_gist}});
-  await db.exec(`create role anon; create role authenticated; create schema auth; create schema storage;
+  await db.exec(`create role anon; create role authenticated; create role service_role; create schema auth; create schema storage;
     create table auth.users(id uuid primary key);
     create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('test.uid',true),'')::uuid$$;
     create function auth.jwt() returns jsonb language sql stable as $$select jsonb_build_object('aal',current_setting('test.aal',true))$$;
