@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { bearerToken, authorizeAdmin } from "./admin-status.mjs";
 import {reminderMode,metaReady} from '../lib/reminder-worker.mjs';
 import {validateMessage} from '../../src/lib/reminder-messages.js';
+import {LEAD_UNITS} from '../../src/lib/reminder-lead-units.js';
 
 const json = (code, body) => ({ statusCode: code, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }, body: JSON.stringify(body) });
 const allowedStatuses = ["pending", "confirmed", "completed", "cancelled", "no_show"];
@@ -41,7 +42,12 @@ export async function runAction(db, action, input = {}) {
     }
     case 'save_reminder_settings': {
       if(typeof input.client_enabled!=='boolean'||typeof input.barber_enabled!=='boolean'||![input.client_minutes,input.barber_minutes].every(n=>Number.isInteger(n)&&n>=15&&n<=10080))throw new Error('Use de 15 minutos a 7 dias.');
-      result=await db.rpc('save_reminder_settings',{p_client_enabled:input.client_enabled,p_barber_enabled:input.barber_enabled,p_client_minutes:input.client_minutes,p_barber_minutes:input.barber_minutes});errorFor(result.error);return true;
+      const args={p_client_enabled:input.client_enabled,p_barber_enabled:input.barber_enabled,p_client_minutes:input.client_minutes,p_barber_minutes:input.barber_minutes};
+      if(input.client_unit!==undefined || input.barber_unit!==undefined){
+        if(!Object.hasOwn(LEAD_UNITS,input.client_unit)||!Object.hasOwn(LEAD_UNITS,input.barber_unit))throw new Error('Unidade inválida. Use minutos, horas ou dias.');
+        args.p_client_unit=input.client_unit;args.p_barber_unit=input.barber_unit;
+      }
+      result=await db.rpc('save_reminder_settings',args);errorFor(result.error);return true;
     }
     case 'save_reminder_contact': {
       if(!uuid(input.id)||!['client','barber'].includes(input.kind)||typeof input.consent!=='boolean')throw new Error('Contato inválido');

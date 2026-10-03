@@ -269,3 +269,19 @@ A assinatura antiga da RPC continua disponível, mas novas reservas por ela não
 Os testes cobrem autorização/MFA/RLS, consentimento opcional e por reserva, repetição de requisição, alteração de consentimento no mesmo UUID, texto com variáveis inválidas, renderização não recursiva, snapshot do histórico simulado, telefone do barbeiro salvo atomicamente, inserção no cursor e workers concorrentes com a 010 aplicada. Agendamentos, valores, serviços e histórico anteriores são preservados. As travas, tentativas máximas, backoff, critérios de elegibilidade e bloqueio de reenvio incerto da 009 continuam ativos.
 
 Resultado local da Etapa 10: 124 testes passaram na suíte completa, incluindo PostgreSQL concorrente e interação no formulário público. npm run build e git diff --check passaram. Não foram executados SQL remoto, envio real pela Meta, commit, push ou merge.
+
+## Etapa 11: unidade de antecedência persistida
+
+Aplique somente supabase/migrations/202610030011_reminder_lead_units.sql após conferir supabase/checks/preflight_011.sql (somente leitura) contra o banco com 001–010 aplicadas. Nenhuma migração anterior foi alterada ou executada remotamente. Aplique a 011 antes do deploy desta versão da interface/API.
+
+Causas corrigidas: o componente reiniciava sua unidade local em minutos ao montar, pois reminder_settings armazenava somente os minutos. Além disso, exibia diretamente a divisão minutos/unidade no input, sem controlar a representação decimal. O campo também convertia entradas usando multiplicação em ponto flutuante.
+
+A 011 adiciona client_unit e barber_unit (minutes, hours ou days). Cada preferência é independente. A duração continua em client_minutes/barber_minutes; nenhum cálculo da fila, consentimento, mensagem, worker ou histórico muda de unidade. Uma nova assinatura de save_reminder_settings salva minutos e unidades na mesma transação, reaproveitando a autorização administrativa/MFA, lock e bloqueio durante processamento da assinatura anterior. RLS e permissões de escrita direta permanecem iguais.
+
+Compatibilidade: o backfill escolhe dias quando os minutos são divisíveis por 1440, horas quando divisíveis por 60 e minutos nos demais casos. Exemplos: 10080 → 7 dias; 120 → 2 horas; 90 → 90 minutos. Isso não recupera a escolha original, que não existia no banco. Da primeira gravação nesta versão em diante, preserva-se a unidade explícita, inclusive se o administrador preferir 10080 minutos em vez de 7 dias. A RPC antiga de quatro argumentos continua funcionando e preserva as unidades já gravadas. Requisições antigas à API, sem unidades, usam essa assinatura.
+
+Trocar somente o select muda a representação e a preferência, nunca os minutos. Valores não exatos são exibidos com até quatro casas decimais, sem zeros desnecessários, com aviso de aproximação e duração exata abaixo: 120 minutos → 0,0833 dias, duração exata 2 horas (120 minutos). Salvar ou alternar o select mantém 120, sem reconverter o decimal arredondado. Ao editar o número manualmente, a entrada deve ter até quatro casas decimais e equivaler a minutos inteiros entre 15 e 10080. Por exemplo, 1,1 hora é exatamente 66 minutos; digitar manualmente 0,0833 dias é recusado por não resultar em minutos inteiros — use 120 minutos ou 2 horas e depois selecione dias. Entradas inválidas bloqueiam a gravação e a troca de unidade até serem corrigidas.
+
+O parser usa aritmética inteira para validar frações, rejeitando zero, negativos, NaN, Infinity, expoentes, excesso de precisão e valores fora dos limites. Unidades inválidas também são recusadas na API e no banco. O modo dry-run e todas as configurações da Meta permanecem inalterados; nenhum envio real foi realizado.
+
+Validação local da Etapa 11: 129 testes passaram na suíte completa, incluindo save/reload, conversões e concorrência em PostgreSQL. npm run build e git diff --check passaram. Nenhum SQL remoto, envio real, commit, push ou merge foi executado.

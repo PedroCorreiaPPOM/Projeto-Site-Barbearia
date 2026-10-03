@@ -20,7 +20,7 @@ test('reminder UI converts units, blocks double submit and labels simulations',a
   const value=()=>view.root.findAllByType('input').find(x=>x.props['aria-label']==='Antecedência para clientes: valor');
   await act(async()=>unit().props.onChange({target:{value:'60'}}));
   await act(async()=>value().props.onChange({target:{value:'1.5'}}));
-  assert.equal(value().props.value,1.5);
+  assert.equal(value().props.value,'1.5');
   const form=view.root.findAllByType('form')[0];
   await act(async()=>{form.props.onSubmit({preventDefault(){}});form.props.onSubmit({preventDefault(){}});});
   assert.equal(writes.length,1);assert.equal(writes[0].input.client_minutes,90);
@@ -29,6 +29,36 @@ test('reminder UI converts units, blocks double submit and labels simulations',a
   assert.ok(!JSON.stringify(view.toJSON()).includes('Destinatários e consentimento'));
   assert.equal(view.root.findAllByType('textarea').length,2);
   assert.ok(JSON.stringify(view.toJSON()).includes('dados fictícios de exemplo'));
+});
+
+test('lead unit selection survives saving and remounting without rounding the duration',async t=>{
+  const target=new URL(`./.lead-ui-${process.pid}.mjs`,import.meta.url);
+  const bundle=await build({entryPoints:['src/admin/Reminders.jsx'],bundle:true,write:false,platform:'node',format:'esm',packages:'external',jsx:'automatic'});
+  await writeFile(target,bundle.outputFiles[0].text);t.after(()=>unlink(target));const {default:Reminders}=await import(target.href);
+  let saved={client_enabled:true,barber_enabled:true,client_minutes:60,barber_minutes:60},view;
+  const api=async(action,input)=>{if(action==='reminder_overview')return {settings:{...saved},history:[],mode:'dry-run'};assert.equal(action,'save_reminder_settings');saved={...input};};
+  async function mount(){await act(async()=>{view=Renderer.create(React.createElement(Reminders,{api,onChanged:async()=>{}}));});}
+  await mount();t.after(()=>act(()=>view.unmount()));
+  const field=(type,person,suffix)=>view.root.findAllByType(type).find(x=>x.props['aria-label']===`Antecedência para ${person}: ${suffix}`);
+  const input=person=>field('input',person,'valor'),unit=person=>field('select',person,'unidade');
+  async function choose(person,factor){await act(async()=>unit(person).props.onChange({target:{value:String(factor)}}));}
+  async function enter(person,value){await act(async()=>input(person).props.onChange({target:{value}}));}
+  async function save(){await act(async()=>view.root.findAllByType('form')[0].props.onSubmit({preventDefault(){}}));}
+  await choose('clientes',1440);await enter('clientes','7');await choose('barbeiros',60);await enter('barbeiros','2');await save();
+  await act(async()=>view.unmount());await mount();
+  assert.equal(input('clientes').props.value,'7');assert.equal(unit('clientes').props.value,1440);
+  assert.equal(input('barbeiros').props.value,'2');assert.equal(unit('barbeiros').props.value,60);
+  for(let i=0;i<12;i++)for(const factor of [1,60,1440]){
+    await choose('barbeiros',factor);assert.equal(input('barbeiros').props.value,({1:'120',60:'2',1440:'0.0833'})[factor]);
+    await save();assert.equal(saved.barber_minutes,120);assert.equal(saved.client_minutes,10080);
+  }
+  assert.ok(JSON.stringify(view.toJSON()).includes('Valor exibido aproximado'));
+  await act(async()=>view.unmount());await mount();assert.equal(input('barbeiros').props.value,'0.0833');
+  await choose('barbeiros',1);assert.equal(input('barbeiros').props.value,'120');
+  for(const invalid of ['0','-1','Infinity','NaN','7.71876923','10081']){
+    await enter('barbeiros',invalid);assert.equal(input('barbeiros').props['aria-invalid'],true);assert.equal(unit('barbeiros').props.disabled,true);
+    await save();assert.equal(saved.barber_minutes,120);
+  }
 });
 
 test('message editor inserts at cursor and rejects unknown placeholders',async t=>{
