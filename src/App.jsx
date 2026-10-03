@@ -4,13 +4,14 @@ import Hero from "./components/Hero.jsx";
 import About from "./components/About.jsx";
 import Gallery from "./components/Gallery.jsx";
 import Barbeiros from "./components/Barbeiros.jsx";
-import Horarios from "./components/Horarios.jsx";
 import Agendamento from "./components/Agendamento.jsx";
 import Contato from "./components/Contato.jsx";
 import Footer from "./components/Footer.jsx";
 import WhatsappFloat from "./components/WhatsappFloat.jsx";
+import usePublicBarbers from "./lib/usePublicBarbers.js";
 
 export default function App() {
+  const publicCatalog = usePublicBarbers();
   // Barbeiro pré-selecionado quando o cliente clica em "Agendar com Geovane/Daniel"
   const [barbeiroPreSelecionado, setBarbeiroPreSelecionado] = useState(null);
 
@@ -27,9 +28,8 @@ export default function App() {
         <Hero onAgendar={() => irParaAgendamento(null)} />
         <About />
         <Gallery />
-        <Barbeiros onAgendarComBarbeiro={irParaAgendamento} />
-        <Horarios />
-        <Agendamento barbeiroPreSelecionado={barbeiroPreSelecionado} />
+        <Barbeiros onAgendarComBarbeiro={irParaAgendamento} catalog={publicCatalog} />
+        <Agendamento barbeiroPreSelecionado={barbeiroPreSelecionado} catalog={publicCatalog} />
         <Contato />
       </main>
       <Footer />

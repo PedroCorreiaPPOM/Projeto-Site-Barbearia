@@ -1,7 +1,5 @@
-import { BARBEIROS } from "../data/barbeiros.js";
-
-export default function Barbeiros({ onAgendarComBarbeiro }) {
-  const lista = Object.values(BARBEIROS);
+export default function Barbeiros({ onAgendarComBarbeiro, catalog }) {
+  const lista = catalog.barbers;
 
   return (
     <section id="barbeiros" className="section">
@@ -12,19 +10,23 @@ export default function Barbeiros({ onAgendarComBarbeiro }) {
         </div>
 
         <div className="barbers-grid">
+          {catalog.loading && <p role="status">Consultando barbeiros disponíveis…</p>}
+          {catalog.error && <div role="alert"><p>Não foi possível consultar os profissionais. {catalog.error}</p><button type="button" className="btn btn-outline" onClick={catalog.retry}>Tentar novamente</button></div>}
+          {!catalog.loading && !catalog.error && !lista.length && <p>Nenhum barbeiro disponível para novos agendamentos.</p>}
           {lista.map((b) => (
             <div className="barber-card" key={b.id}>
               <div className="barber-avatar">
-                {b.foto ? (
-                  <img src={b.foto} alt={`Foto de ${b.nome}`} />
+                {b.photo_url ? (
+                  <img src={b.photo_url} alt={`Foto de ${b.name}`} />
                 ) : (
-                  <span aria-hidden="true">{b.nome.charAt(0)}</span>
+                  <span aria-hidden="true">{b.name.charAt(0)}</span>
                 )}
               </div>
-              <h3 className="barber-name">{b.nome}</h3>
-              <p className="barber-role">{b.cargo}</p>
+              <h3 className="barber-name">{b.name}</h3>
+              <p className="barber-role">Barbeiro</p>
+              {b.description && <p>{b.description}</p>}
               <button className="btn btn-outline" onClick={() => onAgendarComBarbeiro(b.id)}>
-                Agendar com {b.nome}
+                Agendar com {b.name}
               </button>
             </div>
           ))}
