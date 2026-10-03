@@ -163,3 +163,5 @@
   .dash-heading { align-items:flex-start; }
   .dash-collapse span { display:none; }
 }
+
+.reminder-message-preview { white-space: pre-wrap; overflow-wrap: anywhere; padding: 1rem; border-left: 3px solid var(--gold, #c9a45c); background: rgba(255,255,255,.03); line-height: 1.65; }

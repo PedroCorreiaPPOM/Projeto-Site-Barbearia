@@ -26,4 +26,56 @@ test('reminder UI converts units, blocks double submit and labels simulations',a
   assert.equal(writes.length,1);assert.equal(writes[0].input.client_minutes,90);
   assert.ok(JSON.stringify(view.toJSON()).includes('SIMULADO'));
   await act(async()=>release(true));assert.equal(reads.length,2);
+  assert.ok(!JSON.stringify(view.toJSON()).includes('Destinatários e consentimento'));
+  assert.equal(view.root.findAllByType('textarea').length,2);
+  assert.ok(JSON.stringify(view.toJSON()).includes('dados fictícios de exemplo'));
+});
+
+test('message editor inserts at cursor and rejects unknown placeholders',async t=>{
+  const target=new URL(`./.message-editor-${process.pid}.mjs`,import.meta.url);
+  const bundle=await build({entryPoints:['src/admin/ReminderMessageEditor.jsx'],bundle:true,write:false,platform:'node',format:'esm',packages:'external',jsx:'automatic'});
+  await writeFile(target,bundle.outputFiles[0].text);t.after(()=>unlink(target));
+  const {default:Editor}=await import(target.href);
+  const previous=globalThis.requestAnimationFrame;globalThis.requestAnimationFrame=fn=>fn();t.after(()=>{globalThis.requestAnimationFrame=previous;});
+  let changed,view;const node={selectionStart:4,selectionEnd:4,focus(){},setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
+  await act(async()=>{view=Renderer.create(React.createElement(Editor,{label:'Cliente',value:'Olá !',onChange:v=>changed=v}),{createNodeMock:()=>node});});
+  t.after(()=>act(()=>view.unmount()));
+  await act(async()=>view.root.findAllByType('button')[0].props.onClick());
+  assert.equal(changed,'Olá {cliente}!');assert.equal(node.selectionStart,13);
+  await act(async()=>view.update(React.createElement(Editor,{label:'Cliente',value:'{inexistente}',onChange(){}})));
+  assert.equal(view.root.findAllByProps({role:'alert'}).length,1);
+});
+
+test('public booking consent is optional, starts unchecked and resets for another reservation',async t=>{
+  const target=new URL(`./.booking-consent-${process.pid}.mjs`,import.meta.url);
+  const bundle=await build({entryPoints:['src/components/Agendamento.jsx'],bundle:true,write:false,platform:'node',format:'esm',packages:'external',jsx:'automatic',loader:{'.css':'empty','.png':'dataurl','.jpg':'dataurl'}});
+  await writeFile(target,bundle.outputFiles[0].text);t.after(()=>unlink(target));
+  const {default:Booking}=await import(target.href);
+  const previous=globalThis.fetch,requests=[];
+  const day=new Date(Date.now()+86400000).toISOString().slice(0,10),slot={starts_at:`${day}T12:00:00Z`,ends_at:`${day}T12:30:00Z`};
+  globalThis.fetch=async(_,options)=>{const {action,input}=JSON.parse(options.body);if(action==='create')requests.push(input);return {ok:true,json:async()=>({data:action==='availability'?{slots:[slot],total_price:45,total_duration_minutes:30}:{id:'receipt',barber_name:'Geovane',services:[{name:'Corte'}],...slot,total_price:45,total_duration_minutes:30}})};};
+  t.after(()=>{globalThis.fetch=previous;});
+  const catalog={barbers:[{id:'barber',name:'Geovane',booking_horizon_days:60,services:[{id:'cut',name:'Corte',price:45,duration_minutes:30}]}]};let view;
+  await act(async()=>{view=Renderer.create(React.createElement(Booking,{catalog}));});t.after(()=>act(()=>view.unmount()));
+  const text=node=>node.children.map(c=>typeof c==='string'?c:text(c)).join('');
+  const button=label=>view.root.findAllByType('button').find(b=>text(b)===label);
+  async function toConfirmation(){
+    await act(async()=>view.root.findAllByType('button').find(b=>b.props.className?.startsWith('booking-choice')).props.onClick());
+    await act(async()=>view.root.findAllByType('button').find(b=>b.props.className?.startsWith('booking-choice')).props.onClick());
+    await act(async()=>button('Escolher data').props.onClick());
+    await act(async()=>view.root.findByProps({id:'booking-date'}).props.onChange({target:{value:day}}));
+    await act(async()=>button('Consultar horários').props.onClick());
+    await act(async()=>view.root.findAllByType('button').find(b=>b.props['aria-label']?.startsWith('Das ')).props.onClick());
+  }
+  await toConfirmation();
+  const checks=()=>view.root.findAllByType('input').filter(i=>i.props.type==='checkbox');
+  assert.equal(checks()[1].props.checked,false);assert.equal(checks()[1].props.required,undefined);
+  await act(async()=>view.root.findByProps({id:'booking-name'}).props.onChange({target:{value:'Pedro Real'}}));
+  await act(async()=>view.root.findByProps({id:'booking-phone'}).props.onChange({target:{value:'85999999999'}}));
+  await act(async()=>{checks()[0].props.onChange({target:{checked:true}});checks()[1].props.onChange({target:{checked:true}});});
+  await act(async()=>view.root.findByType('form').props.onSubmit({preventDefault(){}}));
+  assert.equal(requests[0].whatsapp_consent,true);
+  await act(async()=>button('Novo agendamento').props.onClick());await toConfirmation();assert.equal(checks()[1].props.checked,false);
+  await act(async()=>view.root.findByType('form').props.onSubmit({preventDefault(){}}));assert.equal(requests[1].whatsapp_consent,false);
+  assert.notEqual(requests[0].request_id,requests[1].request_id);
 });

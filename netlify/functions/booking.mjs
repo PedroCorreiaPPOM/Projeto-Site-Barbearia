@@ -30,7 +30,8 @@ export async function bookingAction(db, action, input = {}) {
     result = await db.rpc("public_available_slots", {p_barber_id:input.barber_id,p_service_ids:input.service_ids,p_date:input.date});
   } else {
     if (!uuid(input.request_id) || typeof input.full_name !== "string" || input.full_name.trim().length > 200 || !/^\S+\s+\S/.test(input.full_name.trim()) || !/^\+55[1-9]\d{9,10}$/.test(input.phone || "") || input.contact_consent !== true || !Number.isFinite(Date.parse(input.starts_at)) || input.website) throw new Error("Informe nome completo, telefone com DDD e consentimento de contato.");
-    result = await db.rpc("create_public_booking", {p_request_id:input.request_id,p_barber_id:input.barber_id,p_service_ids:input.service_ids,p_start:input.starts_at,p_full_name:input.full_name.trim(),p_phone:input.phone,p_contact_consent:true});
+    if(input.whatsapp_consent!==undefined && typeof input.whatsapp_consent!=='boolean')throw new Error('Consentimento de WhatsApp inválido.');
+    result = await db.rpc("create_public_booking", {p_request_id:input.request_id,p_barber_id:input.barber_id,p_service_ids:input.service_ids,p_start:input.starts_at,p_full_name:input.full_name.trim(),p_phone:input.phone,p_contact_consent:true,p_whatsapp_consent:input.whatsapp_consent===true});
   }
   if(result.error) throw result.error;
   return result.data;

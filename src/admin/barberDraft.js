@@ -1,7 +1,7 @@
 export const DAYS=['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
 export function draftFromSnapshot(snapshot) {
   const b=snapshot?.barber;
-  return {name:b?.name || '',description:b?.description || '',photo_path:b?.photo_path || null,
+  return {notification_phone:b?.notification_phone || '',notification_consent:b?.notification_consent || false,name:b?.name || '',description:b?.description || '',photo_path:b?.photo_path || null,
     booking_enabled:b?.booking_enabled || false,slot_interval_minutes:b?.slot_interval_minutes ?? 30,
     buffer_minutes:b?.buffer_minutes ?? 0,minimum_notice_minutes:b?.minimum_notice_minutes ?? 60,
     booking_horizon_days:b?.booking_horizon_days ?? 60,services:snapshot?.links.map(x=>x.service_id) || [],
@@ -32,6 +32,7 @@ export function validatePeriods(periods) {
 }
 export function normalizeDraft(draft,services,today) {
   if(draft.name.trim().length<2 || draft.name.trim().length>120 || draft.description.length>1000) throw new Error('Informe nome de 2 a 120 caracteres e descrição de até 1000.');
+  if(draft.notification_phone && !/^\+55[1-9][0-9]{9,10}$/.test(draft.notification_phone) || draft.notification_consent && !draft.notification_phone) throw new Error('Informe WhatsApp de notificação com +55 e DDD.');
   const result=structuredClone(draft);
   result.name=result.name.trim();
   for(const [key,min,max] of [['buffer_minutes',0,120],['minimum_notice_minutes',0,10080],['booking_horizon_days',1,365]]) {

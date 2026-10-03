@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { bearerToken, authorizeAdmin } from "./admin-status.mjs";
 import {reminderMode,metaReady} from '../lib/reminder-worker.mjs';
+import {validateMessage} from '../../src/lib/reminder-messages.js';
 
 const json = (code, body) => ({ statusCode: code, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }, body: JSON.stringify(body) });
 const allowedStatuses = ["pending", "confirmed", "completed", "cancelled", "no_show"];
@@ -23,9 +24,13 @@ export async function cleanupBarberPhotos(db) {
 export async function runAction(db, action, input = {}) {
   let result;
   switch (action) {
+    case 'save_reminder_messages': {
+      validateMessage(input.client_message);validateMessage(input.barber_message);
+      result=await db.rpc('save_reminder_messages',{p_client:input.client_message,p_barber:input.barber_message});errorFor(result.error);return true;
+    }
     case 'reminder_overview': {
       const settings=await db.from('reminder_settings').select('*').single();errorFor(settings.error);
-      let query=db.from('appointment_reminders').select('id,appointment_id,recipient_type,recipient_name,recipient_phone,scheduled_at,status,attempts,last_attempt_at,next_attempt_at,provider_id,error_code,simulated,sent_at,created_at,updated_at').order('scheduled_at',{ascending:false});
+      let query=db.from('appointment_reminders').select('id,appointment_id,recipient_type,recipient_name,recipient_phone,scheduled_at,status,attempts,last_attempt_at,next_attempt_at,provider_id,error_code,simulated,sent_at,created_at,updated_at,rendered_message').order('scheduled_at',{ascending:false});
       if(input.status){if(!['pending','processing','sent','failed','cancelled','retry'].includes(input.status))throw new Error('Status inválido');query=query.eq('status',input.status);}
       if(input.kind){if(!['client','barber'].includes(input.kind))throw new Error('Tipo inválido');query=query.eq('recipient_type',input.kind);}
       if(input.from){if(!isoDate(input.from))throw new Error('Data inválida');query=query.gte('scheduled_at',`${input.from}T00:00:00-03:00`);}
@@ -40,6 +45,7 @@ export async function runAction(db, action, input = {}) {
     }
     case 'save_reminder_contact': {
       if(!uuid(input.id)||!['client','barber'].includes(input.kind)||typeof input.consent!=='boolean')throw new Error('Contato inválido');
+      if(input.kind==='client' && !input.consent){result=await db.rpc('revoke_client_reminder_consent',{p_id:input.id});errorFor(result.error);return true;}
       if(input.kind==='barber' && input.phone!==null && !/^\+55[1-9][0-9]{9,10}$/.test(input.phone||''))throw new Error('Informe telefone com +55 e DDD.');
       result=await db.from(input.kind==='barber'?'barbers':'clients').update(input.kind==='barber'?{notification_phone:input.phone,notification_consent:input.consent}:{whatsapp_reminder_consent:input.consent}).eq('id',input.id).select('id').single();errorFor(result.error);return true;
     }

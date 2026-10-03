@@ -239,3 +239,33 @@ Antes de live: aplicar 009 após preflight; conferir RLS/MFA no projeto real; co
 Podem existir cobranças da Meta por mensagens, além de consumo de Functions no Netlify e banco no Supabase conforme os planos. Consulte [preços oficiais do WhatsApp](https://whatsappbusiness.com/products/platform-pricing/) antes de ativar; não há orçamento nem tarifa fixa embutidos no código. Em dry-run não há chamadas cobradas pela Meta, mas a infraestrutura continua sendo utilizada.
 
 Validação local desta etapa: npm test passou com 119 testes, incluindo concorrência em PostgreSQL, conversão de unidades e submissão duplicada na interface; npm run build e git diff --check passaram. A integração com conta Meta, Storage/Supabase remoto e inspeção visual em dispositivos reais não foram executadas.
+
+## Etapa 10: personalização e consentimento no fluxo de agendamento
+
+As migrações 001–009 já aplicadas não foram alteradas. Confira manualmente supabase/checks/preflight_010.sql (somente leitura) e aplique supabase/migrations/202609300010_reminder_personalization.sql antes de publicar esta versão. A 010 depende das funções e políticas da 009; nenhuma alteração foi executada remotamente. O procedimento da Etapa 9 para credenciais, agendador, retries e modo de teste continua válido.
+
+### Interface
+
+Lembretes agora tem Quando enviar (cards separados, antecedência em valor + unidade), Personalizar mensagens (dois editores) e Histórico. Telefone e consentimento do barbeiro são salvos no formulário completo de cadastro/edição, na mesma transação do restante dos dados e com controle de concorrência do snapshot. A área de seleção manual de destinatários foi retirada da página Lembretes.
+
+Os editores aceitam até 1500 caracteres. Os botões inserem {cliente}, {barbeiro}, {data}, {horario}, {servicos} e {duracao} no cursor/substituem o trecho selecionado. A prévia usa dados fictícios rotulados como exemplo. Variáveis desconhecidas, chaves incompletas e mensagens vazias são recusadas na interface, API e banco. O texto é renderizado como texto simples, sem HTML e sem expansão recursiva de variáveis presentes nos dados de clientes.
+
+### Relação com os templates oficiais
+
+O texto personalizado controla as simulações. Ele não é enviado como texto livre à Meta, não cria um template e não altera o template aprovado do modo live. As variáveis são resolvidas a partir dos dados reais da reserva, com data e horário em America/Fortaleza. Na aquisição de um item simulado, a mensagem resultante é gravada em appointment_reminders.rendered_message e pode ser aberta no histórico. Edições posteriores não mudam essa mensagem registrada. Simulações antigas, anteriores à 010, não têm um texto reconstruído artificialmente.
+
+O adaptador live permanece com o contrato da Etapa 9: template de cliente recebe nome do cliente, nome do barbeiro e data/hora combinadas; template de barbeiro recebe nome do barbeiro, cliente, data/hora combinadas, serviços e duração. {data} e {horario} no editor são campos separados apenas na simulação; o adaptador atual combina os dois em um parâmetro oficial. Os editores também oferecem {servicos}/{duracao} ao cliente, mas esses parâmetros não existem no contrato atual do template live de cliente. Para usar o novo texto em produção, crie/submeta o template correspondente, confira a aprovação e revise o mapeamento do adaptador em uma próxima etapa. Alterar apenas o nome do template no ambiente sem conferir os parâmetros não é suficiente. Nenhuma aprovação da Meta é presumida; nenhuma mensagem real foi enviada neste trabalho.
+
+### Consentimento público
+
+A confirmação da reserva ganhou uma caixa opcional, inicialmente desmarcada, autorizando lembretes desse agendamento pelo WhatsApp. Usa o único telefone já informado. Trocar o telefone ou iniciar uma nova reserva desmarca a opção. Não altera marketing_consent nem presume autorização a partir do consentimento obrigatório de cadastro/contato.
+
+A RPC ganhou uma assinatura com p_whatsapp_consent boolean. O valor, telefone autorizado e instante do aceite ficam vinculados ao agendamento (whatsapp_reminder_consent, reminder_consent_phone, reminder_consent_at). A autorização de uma reserva não habilita outras reservas do mesmo telefone nem altera o consentimento global de um cliente existente. False impede lembretes dessa reserva mesmo que exista uma preferência global anterior. Reservas legadas ou administrativas com o campo NULL preservam a regra da 009, baseada em clients.whatsapp_reminder_consent. Alterar o telefone cadastrado invalida autorizações específicas para o telefone anterior.
+
+A assinatura antiga da RPC continua disponível, mas novas reservas por ela não recebem opt-in de WhatsApp. A recuperação idempotente de comprovantes anteriores continua compatível. Alterar o consentimento no mesmo UUID de solicitação é rejeitado; o navegador cria um UUID novo quando o conteúdo muda. O RPC administrativo revoke_client_reminder_consent, com MFA e lock da agenda, permite revogar autorizações de reservas futuras e a preferência global; o endpoint administrativo anterior de revogação passa a usá-lo. Não há endpoint público para consultar ou editar clientes existentes. O fluxo registra uma declaração de consentimento, sem verificação de posse do telefone por OTP.
+
+### Validação e preservação
+
+Os testes cobrem autorização/MFA/RLS, consentimento opcional e por reserva, repetição de requisição, alteração de consentimento no mesmo UUID, texto com variáveis inválidas, renderização não recursiva, snapshot do histórico simulado, telefone do barbeiro salvo atomicamente, inserção no cursor e workers concorrentes com a 010 aplicada. Agendamentos, valores, serviços e histórico anteriores são preservados. As travas, tentativas máximas, backoff, critérios de elegibilidade e bloqueio de reenvio incerto da 009 continuam ativos.
+
+Resultado local da Etapa 10: 124 testes passaram na suíte completa, incluindo PostgreSQL concorrente e interação no formulário público. npm run build e git diff --check passaram. Não foram executados SQL remoto, envio real pela Meta, commit, push ou merge.
